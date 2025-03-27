@@ -270,7 +270,6 @@ class WorkflowOrchestrator:
             logger.error(f"STDOUT: {e.stdout}")
             logger.error(f"STDERR: {e.stderr}")
             return False
-    
     def run_imagej_macro(self, macro_path, args=None):
         """
         Run an ImageJ macro with the specified arguments.
@@ -282,18 +281,25 @@ class WorkflowOrchestrator:
         Returns:
             bool: True if successful, False otherwise.
         """
-        # Assuming ImageJ is installed and accessible via command line
-        # Adjust based on your ImageJ installation
+        # Get ImageJ path from config
         imagej_path = self.config.get('imagej_path', 'ImageJ')
         
-        cmd = [imagej_path, '--headless', '--run', macro_path]
+        # Construct absolute path to macro
+        abs_macro_path = Path(macro_path)
+        if not abs_macro_path.is_absolute():
+            abs_macro_path = Path.cwd() / macro_path
+        
+        # Build command
+        cmd = [imagej_path, '--headless', '--console', '--run', str(abs_macro_path)]
         if args:
             cmd.append(f'"{args}"')
-            
-        logger.info(f"Running ImageJ macro: {macro_path}")
+        
+        # Log the exact command
+        logger.info(f"Running ImageJ command: {' '.join(cmd)}")
+        
         try:
             process = subprocess.run(
-                cmd, 
+                cmd,
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -301,6 +307,7 @@ class WorkflowOrchestrator:
                 shell=True  # ImageJ might need shell=True
             )
             logger.info(f"ImageJ macro completed successfully: {macro_path}")
+            logger.info(f"ImageJ output: {process.stdout}")
             return True
         except subprocess.CalledProcessError as e:
             logger.error(f"ImageJ macro failed: {e}")

@@ -51,6 +51,20 @@
       "description": "Track cells by matching ROIs between time points"
     },
     {
+      "name": "resize_rois",
+      "type": "python",
+      "path": "scripts/resize_rois.py",
+      "args": ["--input", "{output_dir}/preprocessed", "--output", "{output_dir}/ROIs", "--imagej", "{imagej_path}"],
+      "description": "Resize ROIs from binned images to match original image dimensions"
+    },
+    {
+      "name": "extract_cells",
+      "type": "python",
+      "path": "scripts/extract_cells.py",
+      "args": ["--roi-dir", "{output_dir}/ROIs", "--raw-data-dir", "{output_dir}/raw_data", "--output-dir", "{output_dir}/cells", "--imagej", "{imagej_path}"],
+      "description": "Extract individual cells using ROIs and save as separate files"
+    },
+    {
       "name": "feature_extraction",
       "type": "python",
       "path": "scripts/extract_features.py",
