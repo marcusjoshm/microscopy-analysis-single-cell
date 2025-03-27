@@ -1,0 +1,89 @@
+{
+  "name": "Microscopy Single-Cell Analysis Workflow",
+  "version": "1.0.0",
+  "description": "Complete workflow for analyzing microscopy data with different conditions and timepoints",
+  "imagej_path": "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
+  "steps": [
+    {
+      "name": "setup_directories",
+      "type": "function",
+      "function": "setup_analysis_directories",
+      "function_args": {},
+      "description": "Create directory structure for analysis"
+    },
+    {
+      "name": "select_timepoints",
+      "type": "manual",
+      "instructions": "Review available timepoints in the raw data and decide which timepoints to use for analysis. Current experiment has timepoints: {timepoints_list}. Press Enter when you have made your selection. You can specify timepoints when running the script with --timepoints option.",
+      "description": "Select specific timepoints for analysis"
+    },
+    {
+      "name": "select_regions",
+      "type": "manual",
+      "instructions": "Review available regions in the raw data and decide which regions to use for analysis. Current experiment has regions: {regions_list}. Press Enter when you have made your selection. You can specify regions when running the script with --regions option.",
+      "description": "Select specific regions for analysis"
+    },
+    {
+      "name": "imagej_preprocessing",
+      "type": "imagej_macro",
+      "path": "/path/to/macros/preprocess.ijm",
+      "args": "input_dir='{output_dir}/raw_data' output_dir='{output_dir}/preprocessed' regions='{regions}' timepoints='{timepoints}'",
+      "description": "Preprocess images using ImageJ"
+    },
+    {
+      "name": "manual_quality_check",
+      "type": "manual",
+      "instructions": "Please review the preprocessed images in '{output_dir}/preprocessed' directory.\n\n1. Open each condition folder\n2. Look for artifacts or issues in the images\n3. Remove any images that show artifacts or are unsuitable for analysis\n\nWhen finished, press Enter to continue.",
+      "description": "Manual quality check of preprocessed images"
+    },
+    {
+      "name": "cell_segmentation",
+      "type": "python",
+      "path": "/path/to/scripts/segment_cells.py",
+      "args": ["--input", "{output_dir}/preprocessed", "--output", "{output_dir}/masks", "--regions", "{regions}", "--timepoints", "{timepoints}"],
+      "description": "Segment cells in preprocessed images"
+    },
+    {
+      "name": "manual_roi_adjustment",
+      "type": "imagej_macro",
+      "path": "/path/to/macros/manual_roi_adjustment.ijm",
+      "args": "masks_dir='{output_dir}/masks' output_dir='{output_dir}/ROIs'",
+      "description": "Manual adjustment of ROIs in ImageJ"
+    },
+    {
+      "name": "feature_extraction",
+      "type": "python",
+      "path": "/path/to/scripts/extract_features.py",
+      "args": ["--input", "{output_dir}/ROIs", "--masks", "{output_dir}/masks", "--output", "{output_dir}/cells", "--regions", "{regions}", "--timepoints", "{timepoints}"],
+      "description": "Extract features from segmented cells"
+    },
+    {
+      "name": "merge_cell_data",
+      "type": "python",
+      "path": "/path/to/scripts/merge_cell_data.py",
+      "args": ["--input", "{output_dir}/cells", "--output", "{output_dir}/analysis/all_cells.csv"],
+      "description": "Merge all cell data into a single dataset"
+    },
+    {
+      "name": "statistical_analysis",
+      "type": "python",
+      "path": "/path/to/scripts/analyze_data.py",
+      "args": ["--input", "{output_dir}/analysis/all_cells.csv", "--output", "{output_dir}/analysis"],
+      "description": "Perform statistical analysis on cell data"
+    },
+    {
+      "name": "generate_visualizations",
+      "type": "python",
+      "path": "/path/to/scripts/generate_plots.py",
+      "args": ["--input", "{output_dir}/analysis/all_cells.csv", "--stats", "{output_dir}/analysis", "--output", "{output_dir}/analysis/figures"],
+      "description": "Generate plots and visualizations"
+    },
+    {
+      "name": "generate_report",
+      "type": "python",
+      "path": "/path/to/scripts/generate_report.py",
+      "args": ["--data", "{output_dir}/analysis/all_cells.csv", "--stats", "{output_dir}/analysis", "--figures", "{output_dir}/analysis/figures", "--output", "{output_dir}/analysis/final_report.html"],
+      "description": "Generate final analysis report"
+    }
+  ]
+}
