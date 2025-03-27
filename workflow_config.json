@@ -44,6 +44,13 @@
       "description": "Launch Cellpose and FIJI for interactive cell segmentation"
     },
     {
+      "name": "roi_tracking",
+      "type": "python",
+      "path": "scripts/track_rois.py",
+      "args": ["--input", "{output_dir}/preprocessed", "--recursive"],
+      "description": "Track cells by matching ROIs between time points"
+    },
+    {
       "name": "feature_extraction",
       "type": "python",
       "path": "scripts/extract_features.py",
