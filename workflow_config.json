@@ -24,37 +24,30 @@
       "description": "Select specific regions for analysis"
     },
     {
-      "name": "imagej_preprocessing",
-      "type": "imagej_macro",
-      "path": "/path/to/macros/preprocess.ijm",
-      "args": "input_dir='{output_dir}/raw_data' output_dir='{output_dir}/preprocessed' regions='{regions}' timepoints='{timepoints}'",
-      "description": "Preprocess images using ImageJ"
+      "name": "bin_images_for_segmentation",
+      "type": "python",
+      "path": "scripts/bin_images.py",
+      "args": ["--input", "{output_dir}/raw_data", "--output", "{output_dir}/preprocessed"],
+      "description": "Bin images 4x4 for cell segmentation using Python"
     },
     {
       "name": "manual_quality_check",
       "type": "manual",
-      "instructions": "Please review the preprocessed images in '{output_dir}/preprocessed' directory.\n\n1. Open each condition folder\n2. Look for artifacts or issues in the images\n3. Remove any images that show artifacts or are unsuitable for analysis\n\nWhen finished, press Enter to continue.",
+      "instructions": "Please review the preprocessed images in '{output_dir}/preprocessed' directory.\n\n1. Open each condition folder\n2. Look for artifacts or issues in the binned images\n3. Remove any images that show artifacts or are unsuitable for analysis\n\nWhen finished, press Enter to continue.",
       "description": "Manual quality check of preprocessed images"
     },
     {
-      "name": "cell_segmentation",
-      "type": "python",
-      "path": "/path/to/scripts/segment_cells.py",
-      "args": ["--input", "{output_dir}/preprocessed", "--output", "{output_dir}/masks", "--regions", "{regions}", "--timepoints", "{timepoints}"],
-      "description": "Segment cells in preprocessed images"
-    },
-    {
-      "name": "manual_roi_adjustment",
-      "type": "imagej_macro",
-      "path": "/path/to/macros/manual_roi_adjustment.ijm",
-      "args": "masks_dir='{output_dir}/masks' output_dir='{output_dir}/ROIs'",
-      "description": "Manual adjustment of ROIs in ImageJ"
+      "name": "run_cellpose_segmentation",
+      "type": "gui_application",
+      "path": "cellpose",
+      "instructions": "Please follow these steps for cell segmentation using Cellpose:\n\n1. In the Cellpose GUI, navigate to '{output_dir}/preprocessed' to find the binned images (bin4x4_*.tif)\n2. Load the images for each condition you want to analyze\n3. Set the appropriate model and parameters for segmentation\n4. Run the segmentation\n5. Save the segmentation masks to '{output_dir}/masks' maintaining the original directory structure\n\nWhen you have finished segmenting all the required images, press Enter to continue.",
+      "description": "Run Cellpose GUI for cell segmentation"
     },
     {
       "name": "feature_extraction",
       "type": "python",
       "path": "/path/to/scripts/extract_features.py",
-      "args": ["--input", "{output_dir}/ROIs", "--masks", "{output_dir}/masks", "--output", "{output_dir}/cells", "--regions", "{regions}", "--timepoints", "{timepoints}"],
+      "args": ["--input", "{output_dir}/raw_data", "--masks", "{output_dir}/masks", "--output", "{output_dir}/cells", "--regions", "{regions}", "--timepoints", "{timepoints}"],
       "description": "Extract features from segmented cells"
     },
     {
