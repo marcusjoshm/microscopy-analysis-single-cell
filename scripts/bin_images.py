@@ -33,26 +33,10 @@ def bin_image(image, bin_factor=4):
     return downscale_local_mean(image, (bin_factor, bin_factor))
 
 
-def enhance_contrast(image, percentile=0.35):
-    """
-    Enhance contrast similar to ImageJ's enhance contrast function.
-    
-    Args:
-        image (numpy.ndarray): Input image
-        percentile (float): Percentage of saturated pixels (0.0-100.0)
-        
-    Returns:
-        numpy.ndarray: Contrast-enhanced image
-    """
-    # Rescale intensity to match the percentile specification
-    p_low, p_high = percentile, 100 - percentile
-    v_min, v_max = np.percentile(image, (p_low, p_high))
-    
-    # Clip values outside the range
-    return exposure.rescale_intensity(image, in_range=(v_min, v_max))
+# Contrast enhancement function removed as requested
 
 
-def process_images(input_dir, output_dir, bin_factor=4, percentile=0.35):
+def process_images(input_dir, output_dir, bin_factor=4):
     """
     Process images in input directory and save to output directory.
     
@@ -96,11 +80,8 @@ def process_images(input_dir, output_dir, bin_factor=4, percentile=0.35):
         # Bin the image
         binned_image = bin_image(image, bin_factor=bin_factor)
         
-        # Enhance contrast
-        enhanced_image = enhance_contrast(binned_image, percentile=percentile)
-        
-        # Save the processed image
-        tifffile.imwrite(output_file, enhanced_image.astype(image.dtype))
+        # Save the processed image (contrast enhancement removed)
+        tifffile.imwrite(output_file, binned_image.astype(image.dtype))
         
         print(f"Saved to {output_file}")
     
@@ -112,12 +93,11 @@ def main():
     parser.add_argument("--input", "-i", required=True, help="Input directory containing raw image data")
     parser.add_argument("--output", "-o", required=True, help="Output directory for binned images")
     parser.add_argument("--bin-factor", "-b", type=int, default=4, help="Binning factor (default: 4)")
-    parser.add_argument("--percentile", "-p", type=float, default=0.35, 
-                        help="Percentile for contrast enhancement (default: 0.35)")
+    # Percentile parameter removed as contrast enhancement is no longer needed
     
     args = parser.parse_args()
     
-    process_images(args.input, args.output, args.bin_factor, args.percentile)
+    process_images(args.input, args.output, args.bin_factor)
 
 
 if __name__ == "__main__":
