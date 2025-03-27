@@ -37,17 +37,23 @@
       "description": "Manual quality check of preprocessed images"
     },
     {
+      "name": "cellpose_segmentation",
+      "type": "manual",
+      "instructions": "The next step is to use Cellpose for cell segmentation. The preprocessed (binned) images are located in:\n\n'{output_dir}/preprocessed'\n\nWhen you press Enter, Cellpose will open. Please follow these steps:\n\n1. In the Cellpose GUI, navigate to the directory above to find your binned images (bin4x4_*.tif)\n2. Load the images for each condition you want to analyze\n3. Set the appropriate model (e.g., 'cyto') and parameters for segmentation\n4. Run the segmentation\n5. Save the segmentation masks to '{output_dir}/masks' maintaining the original directory structure\n\nPress Enter to launch Cellpose...",
+      "description": "Instructions for cell segmentation with Cellpose"
+    },
+    {
       "name": "run_cellpose_gui",
       "type": "bash",
       "path": "scripts/run_cellpose.sh",
-      "args": ["--gui", "--dir", "{output_dir}/preprocessed"],
+      "args": ["--gui"],
       "description": "Launch Cellpose GUI for interactive cell segmentation"
     },
     {
-      "name": "cellpose_segmentation_manual",
+      "name": "cellpose_completion",
       "type": "manual",
-      "instructions": "Please follow these steps for cell segmentation using Cellpose:\n\n1. In the Cellpose GUI that just opened, navigate to '{output_dir}/preprocessed' to find the binned images (bin4x4_*.tif)\n2. Load the images for each condition you want to analyze\n3. Set the appropriate model (e.g., 'cyto') and parameters for segmentation\n4. Run the segmentation\n5. Save the segmentation masks to '{output_dir}/masks' maintaining the original directory structure\n\nWhen you have finished segmenting all the required images, close the Cellpose GUI and press Enter to continue.",
-      "description": "Perform cell segmentation with Cellpose GUI"
+      "instructions": "Have you completed the cell segmentation using Cellpose and saved all masks to '{output_dir}/masks'?\n\nPress Enter when you have finished to continue with the workflow.",
+      "description": "Confirm completion of cell segmentation"
     },
     {
       "name": "feature_extraction",

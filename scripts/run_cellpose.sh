@@ -21,8 +21,8 @@ echo "Using numpy version: $(python -c 'import numpy; print(numpy.__version__)')
 if [ "$1" = "--gui" ]; then
     # Run Cellpose GUI
     echo "Starting Cellpose GUI..."
-    shift  # Remove the --gui argument
-    cellpose "$@"
+    # Just launch the GUI without any arguments
+    cellpose
 else
     # Run Cellpose in command line mode with all arguments passed to this script
     echo "Running Cellpose with arguments: $*"
