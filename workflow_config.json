@@ -65,6 +65,27 @@
       "description": "Extract individual cells using ROIs and save as separate files"
     },
     {
+      "name": "group_cells",
+      "type": "python",
+      "path": "scripts/group_cells.py",
+      "args": ["--cells-dir", "{output_dir}/cells", "--output-dir", "{output_dir}/grouped_cells", "--bins", "3"],
+      "description": "Group cells by expression level and create summed images"
+    },
+    {
+      "name": "threshold_grouped_cells",
+      "type": "python",
+      "path": "scripts/otsu_threshold_grouped_cells.py",
+      "args": ["--input-dir", "{output_dir}/grouped_cells", "--output-dir", "{output_dir}/grouped_masks", "--imagej", "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx"],
+      "description": "Threshold grouped cell images to create masks"
+    },
+    {
+      "name": "combine_masks",
+      "type": "python",
+      "path": "scripts/combine_masks.py",
+      "args": ["--input-dir", "{output_dir}/grouped_masks", "--output-dir", "{output_dir}/combined_masks"],
+      "description": "Combine mask images from different bin groups into single masks"
+    },
+    {
       "name": "feature_extraction",
       "type": "python",
       "path": "scripts/extract_features.py",
