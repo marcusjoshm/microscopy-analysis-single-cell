@@ -75,7 +75,7 @@
       "name": "threshold_grouped_cells",
       "type": "python",
       "path": "scripts/otsu_threshold_grouped_cells.py",
-      "args": ["--input-dir", "{output_dir}/grouped_cells", "--output-dir", "{output_dir}/grouped_masks", "--imagej", "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx"],
+      "args": ["--input-dir", "{output_dir}/grouped_cells", "--output-dir", "{output_dir}/grouped_masks", "--imagej", "{imagej_path}"],
       "description": "Threshold grouped cell images to create masks"
     },
     {
@@ -84,6 +84,13 @@
       "path": "scripts/combine_masks.py",
       "args": ["--input-dir", "{output_dir}/grouped_masks", "--output-dir", "{output_dir}/combined_masks"],
       "description": "Combine mask images from different bin groups into single masks"
+    },
+    {
+      "name": "create_cell_masks",
+      "type": "python",
+      "path": "scripts/create_cell_masks.py",
+      "args": ["--roi-dir", "{output_dir}/ROIs", "--mask-dir", "{output_dir}/combined_masks", "--output-dir", "{output_dir}/masks", "--imagej", "{imagej_path}"],
+      "description": "Create individual cell masks by applying ROIs to combined masks"
     },
     {
       "name": "feature_extraction",
