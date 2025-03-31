@@ -60,6 +60,16 @@ The complete workflow can be run with:
 python single_cell_workflow.py --config workflow_config.json --input /path/to/input --output /path/to/output --regions R_1 --timepoints "t00 t03"
 ```
 
+### Single Timepoint Data
+
+For datasets that only contain a single timepoint (e.g., only t00 files), you should skip the roi_tracking step:
+
+```
+python single_cell_workflow.py --config workflow_config.json --input /path/to/input --output /path/to/output --skip roi_tracking
+```
+
+This bypasses the cell tracking step which is designed to match ROIs between different timepoints and is unnecessary for single timepoint data.
+
 ### Configuration
 
 The workflow is configured through a JSON file (`workflow_config.json`). You can customize:
@@ -72,7 +82,7 @@ The workflow is configured through a JSON file (`workflow_config.json`). You can
 
 - `--regions`: Specify regions to analyze (e.g., "R_1 R_2 R_3")
 - `--timepoints`: Specify timepoints to analyze (e.g., "t00 t03")
-- `--skip-steps`: Skip specific workflow steps
+- `--skip`: Skip specific workflow steps (e.g., "roi_tracking" for single timepoint data)
 
 ## File Format and Naming Conventions
 
@@ -97,6 +107,7 @@ Example: `R_1_t00_ch01.tif`
 - Standardized timepoint formatting to use 'tXX' format throughout the workflow
 - Improved directory structure handling with consistent region and timepoint formatting
 - Enhanced error handling and logging for better debugging
+- Added support for single timepoint datasets by skipping the roi_tracking step
 
 ## License
 
