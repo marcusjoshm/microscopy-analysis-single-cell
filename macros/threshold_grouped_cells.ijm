@@ -11,8 +11,8 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-03-25_analysis/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-03-25_analysis/grouped_masks/";
+cellsDir = "/Volumes/NX-01-A/2025-03-29_analysis/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-03-29_analysis/grouped_masks/";
 
 print("cellsDir: " + cellsDir);
 
