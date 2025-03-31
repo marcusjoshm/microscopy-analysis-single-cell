@@ -1,47 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-"""
-Extract Individual Cells Script for Single Cell Analysis Workflow
-
-This script uses ROIs to extract individual cells from the original images
-and saves them as separate files in the cells directory.
-"""
-
-import os
-import sys
-import argparse
-import subprocess
-import logging
-from pathlib import Path
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger("CellExtractor")
-
-def create_macro_file(roi_dir, raw_data_dir, output_dir):
-    """
-    Create an ImageJ macro file for extracting individual cells.
-    
-    Args:
-        roi_dir (str): Directory containing ROI files
-        raw_data_dir (str): Directory containing original images
-        output_dir (str): Directory where individual cells will be saved
-        
-    Returns:
-        str: Path to the created macro file
-    """
-    # Create a macro file
-    macro_file = Path("macros/temp_extract_cells.ijm")
-    
-    # Ensure the directory exists
-    macro_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Build the macro content in parts to avoid formatting issues
-    macro_content = """
 // ----- Helper Functions -----
 function startsWith(str, prefix) {
     result = substring(str, 0, lengthOf(prefix));
@@ -60,15 +17,11 @@ function endsWith(str, suffix) {
 }
 
 // ----- Set Parent Directories -----
-"""
-    
-    # Add directory paths (this avoids format string issues)
-    macro_content += f'roiParent = "{roi_dir}/";\n'
-    macro_content += f'rawDataParent = "{raw_data_dir}/";\n'
-    macro_content += f'outputParent = "{output_dir}/";\n\n'
-    
-    # Continue with the rest of the macro
-    macro_content += """
+roiParent = "/Volumes/NX-01-A/2025-03-25_analysis/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-03-25_analysis/raw_data/";
+outputParent = "/Volumes/NX-01-A/2025-03-25_analysis/cells/";
+
+
 // Ensure trailing slashes for path concatenation
 if (!endsWith(roiParent, "/")) roiParent = roiParent + "/";
 if (!endsWith(rawDataParent, "/")) rawDataParent = rawDataParent + "/";
@@ -286,91 +239,3 @@ for (d = 0; d < dishes.length; d++) {
     }
 }
 print("Completed extracting individual cells");
-"""
-    
-    # Write the macro content to the file
-    with open(macro_file, 'w') as f:
-        f.write(macro_content)
-    
-    logger.info(f"Created macro file: {macro_file}")
-    return str(macro_file)
-
-def run_imagej_macro(imagej_path, macro_file):
-    """
-    Run ImageJ with a given macro and arguments.
-    
-    Args:
-        imagej_path (str): Path to the ImageJ executable
-        macro_file (str): Path to the ImageJ macro file
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        cmd = [imagej_path, '-macro', macro_file]
-        
-        logger.info(f"Running ImageJ command: {cmd}")
-        
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False  # Don't raise an exception on non-zero return code
-        )
-        
-        # Log the output
-        if result.stdout:
-            logger.info(f"ImageJ output: {result.stdout}")
-        if result.stderr:
-            logger.warning(f"ImageJ errors: {result.stderr}")
-        
-        # Check if the command executed successfully
-        if result.returncode != 0:
-            logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
-            return False
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error running ImageJ: {e}")
-        return False
-
-def main():
-    """Main function to extract individual cells."""
-    parser = argparse.ArgumentParser(description='Extract individual cells using ROIs')
-    
-    parser.add_argument('--roi-dir', '-i', required=True,
-                        help='Directory containing ROI files')
-    parser.add_argument('--raw-data-dir', '-d', required=True,
-                        help='Directory containing original images')
-    parser.add_argument('--output-dir', '-o', required=True,
-                        help='Directory where individual cells will be saved')
-    parser.add_argument('--imagej', required=True,
-                        help='Path to ImageJ executable')
-    parser.add_argument('--regions', '-r', nargs='+',
-                        help='List of regions to process')
-    parser.add_argument('--timepoints', '-t', nargs='+',
-                        help='List of timepoints to process')
-    parser.add_argument('--conditions', '-c', nargs='+',
-                        help='List of conditions to process')
-    
-    args = parser.parse_args()
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    # Create the ImageJ macro
-    macro_file = create_macro_file(args.roi_dir, args.raw_data_dir, args.output_dir)
-    
-    # Run the ImageJ macro
-    success = run_imagej_macro(args.imagej, macro_file)
-    
-    if success:
-        logger.info("Cell extraction completed successfully")
-        return 0
-    else:
-        logger.error("Cell extraction failed")
-        return 1
-
-if __name__ == "__main__":
-    sys.exit(main())

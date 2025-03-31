@@ -29,13 +29,13 @@ logger = logging.getLogger("MaskCombiner")
 
 def get_mask_prefix(filename):
     """
-    Extract the prefix from a mask filename.
+    Extract the mask prefix from a filename.
     
     Args:
-        filename (str): The mask filename (e.g., MASK_R_1_45min_bin_1_n4.tif)
+        filename (str): The mask filename (e.g., MASK_R_1_t00_bin_1_n4.tif)
         
     Returns:
-        str: The mask prefix (e.g., MASK_R_1_45min)
+        str: The mask prefix (e.g., MASK_R_1_t00)
     """
     # Split by "_bin_" which appears in all your mask files
     parts = filename.split("_bin_")
@@ -100,9 +100,10 @@ def combine_masks(mask_dir, output_dir):
     """
     try:
         # Extract condition, region and timepoint from the mask directory path
-        # Example path: /path/to/grouped_masks/Dish_1_Washout_+_DMSO/R_1_45min
+        # Example path: /path/to/grouped_masks/Dish_1_Washout_+_DMSO/R_1_t00
+        mask_dir = Path(mask_dir)
         condition = mask_dir.parent.name  # e.g., Dish_1_Washout_+_DMSO
-        region_timepoint = mask_dir.name  # e.g., R_1_45min
+        region_timepoint = mask_dir.name  # e.g., R_1_t00
         
         # Ensure the output directory exists
         output_condition_dir = output_dir / condition

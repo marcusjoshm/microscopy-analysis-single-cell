@@ -1,0 +1,20 @@
+{
+    "experiment_metadata": {
+        "regions": ["R_1", "R_2", "R_3", "R_4"],
+        "timepoints": ["t00", "t03"],
+        "conditions": ["Dish_1_Washout_+_DMSO", "Dish_2_Washout_+_DMSO"]
+    },
+    "roi_settings": {
+        "width": 100,
+        "height": 100,
+        "padding": 10
+    },
+    "mask_settings": {
+        "bin_size": 1,
+        "nuclei_channel": 4
+    },
+    "analysis_settings": {
+        "measurements": ["Area", "Mean", "StdDev", "Min", "Max"],
+        "background_subtraction": true
+    }
+} 

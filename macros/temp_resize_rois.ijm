@@ -1,57 +1,13 @@
+
 // Resize ROIs Macro for Single Cell Analysis Workflow
-// This macro takes ROIs from the preprocessed directory, resizes them to match the original images,
-// and saves them to the ROI directory.
-
-// Get input and output directories from macro arguments
-#@ String input_dir
-#@ String output_dir
-
-// Enable batch mode for headless operation
-setBatchMode(true);
-
-// ----- Helper Functions -----
-function endsWith(str, suffix) {
-    result = substring(str, lengthOf(str) - lengthOf(suffix), lengthOf(str));
-    if (result == suffix)
-        return 1;
-    else
-        return 0;
-}
-
-function startsWith(str, prefix) {
-    result = substring(str, 0, lengthOf(prefix));
-    if (result == prefix)
-        return 1;
-    else
-        return 0;
-}
-
-// Use provided directories or default
-if (input_dir == "") {
-    exit("Error: Input directory not specified");
-}
-
-if (output_dir == "") {
-    exit("Error: Output directory not specified");
-}
-
-// Ensure output directory exists
-if (!File.exists(output_dir)) {
-    File.makeDirectory(output_dir);
-}
-
-// Strip trailing slashes if present
-if (endsWith(input_dir, "/")) {
-    input_dir = substring(input_dir, 0, lengthOf(input_dir)-1);
-}
-if (endsWith(output_dir, "/")) {
-    output_dir = substring(output_dir, 0, lengthOf(output_dir)-1);
-}
+// Input and output directories
+input_dir = "/Volumes/NX-01-A/2025-03-25_analysis/preprocessed";
+output_dir = "/Volumes/NX-01-A/2025-03-25_analysis/ROIs";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
 
-// Define the regions and timepoints to process, or scan for them automatically
+// Define the regions and timepoints to process
 regions = newArray("R_1", "R_2", "R_3");
 timepoints = newArray("t00", "t03");
 
@@ -76,13 +32,12 @@ for (c = 0; c < condition_dirs.length; c++) {
         File.makeDirectory(output_condition_dir);
     }
 
-    // Process all subdirectories under the condition directories
+    // Get all subdirectories in the condition directory
     subdirs = getFileList(condition_path);
     
     // Process each subdirectory
     for (s = 0; s < subdirs.length; s++) {
         subdir = subdirs[s];
-        // Skip non-directories and hidden folders
         if (!File.isDirectory(condition_path + "/" + subdir) || indexOf(subdir, ".") == 0) {
             continue;
         }
@@ -113,7 +68,7 @@ for (c = 0; c < condition_dirs.length; c++) {
                 }
 
                 if (roi_file == "") {
-                    print("No ROI zip file found for " + condition_name + " " + region + " " + tp + " in " + subdir);
+                    print("No ROI zip file found for " + condition_name + " " + region + " " + tp);
                     continue;
                 }
 
@@ -151,10 +106,7 @@ for (c = 0; c < condition_dirs.length; c++) {
                 image_title = getTitle();
 
                 print("  Opening ROI file: " + roi_path);
-                // Use batch mode to avoid headless exceptions
-                setBatchMode(true);
-                
-                // Initialize ROI Manager without a GUI
+                // Initialize ROI Manager
                 roiManager("reset");
                 
                 // Open ROIs
@@ -207,9 +159,6 @@ for (c = 0; c < condition_dirs.length; c++) {
                 // Reset ROI Manager for next round
                 roiManager("reset");
                 
-                // Turn off batch mode
-                setBatchMode(false);
-                
                 num_processed++;
             }
         }
@@ -218,6 +167,4 @@ for (c = 0; c < condition_dirs.length; c++) {
 
 print("Completed processing " + num_processed + " ROI files");
 print("Resized ROIs saved to " + output_dir);
-
-// Turn off batch mode
-setBatchMode(false);
+    

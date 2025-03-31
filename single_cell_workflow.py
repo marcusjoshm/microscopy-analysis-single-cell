@@ -169,9 +169,9 @@ class WorkflowOrchestrator:
             # Create additional subdirectories for regions and timepoints
             extra_subdirs = []
             # Generate subdirectory names based on regions and timepoints from metadata
-            # Format: R_X_YYmin where X is region number and YY is timepoint (45 or 60 min)
+            # Format: R_X_tXX where X is region number and tXX is timepoint (t00, t03, etc.)
             for region in self.experiment_metadata['regions']:
-                for time_suffix in ['45min', '60min']:  # Hardcoded time labels
+                for time_suffix in ['t00', 't03']:  # Hardcoded time labels
                     extra_subdirs.append(f"{region}_{time_suffix}")
             
             # Create these subdirectories
@@ -381,8 +381,25 @@ class WorkflowOrchestrator:
         print(f"MANUAL STEP REQUIRED: {step_name}")
         print("="*80)
         print(instructions)
-        print("\nPress Enter when you have completed this step...")
-        input()
+        
+        # Handle special manual steps that require input
+        if step_name == "select_timepoints" and not self.timepoints:
+            print("\nAvailable timepoints:", ', '.join(self.experiment_metadata['timepoints']))
+            print("Enter timepoints to analyze (space-separated, e.g. 't00 t03'):")
+            user_input = input().strip()
+            if user_input:
+                self.timepoints = user_input.split()
+                logger.info(f"Selected timepoints: {self.timepoints}")
+        elif step_name == "select_regions" and not self.regions:
+            print("\nAvailable regions:", ', '.join(self.experiment_metadata['regions']))
+            print("Enter regions to analyze (space-separated, e.g. 'R_1 R_2'):")
+            user_input = input().strip()
+            if user_input:
+                self.regions = user_input.split()
+                logger.info(f"Selected regions: {self.regions}")
+        else:
+            print("\nPress Enter when you have completed this step...")
+            input()
         
         return True
     
@@ -419,6 +436,13 @@ class WorkflowOrchestrator:
             script_path = step.get('path')
             args = step.get('args', [])
             
+            # Skip this step if it's in the skip list
+            if step_name in self.skip_steps:
+                logger.info(f"Skipping step {i+1}/{total_steps}: {step_name}")
+                self.workflow_state['steps_skipped'].append(step_name)
+                self._save_state()
+                continue
+            
             # Replace placeholders in args
             if isinstance(args, list):
                 processed_args = []
@@ -430,14 +454,20 @@ class WorkflowOrchestrator:
                     
                     # Replace region and timepoint placeholders if specific ones are selected
                     if '{regions}' in arg and self.regions:
-                        # Join regions with appropriate separator based on the script type
-                        separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
-                        arg = arg.replace('{regions}', separator.join(self.regions))
+                        # Always use space separator for analyze_cell_masks.py
+                        if 'analyze_cell_masks.py' in script_path:
+                            arg = arg.replace('{regions}', ' '.join(self.regions))
+                        else:
+                            separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
+                            arg = arg.replace('{regions}', separator.join(self.regions))
                     
                     if '{timepoints}' in arg and self.timepoints:
-                        # Join timepoints with appropriate separator based on the script type
-                        separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
-                        arg = arg.replace('{timepoints}', separator.join(self.timepoints))
+                        # Always use space separator for analyze_cell_masks.py
+                        if 'analyze_cell_masks.py' in script_path:
+                            arg = arg.replace('{timepoints}', ' '.join(self.timepoints))
+                        else:
+                            separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
+                            arg = arg.replace('{timepoints}', separator.join(self.timepoints))
                         
                     processed_args.append(arg)
                 args = processed_args
@@ -460,12 +490,6 @@ class WorkflowOrchestrator:
                 'total': total_steps
             }
             self._save_state()
-            
-            # Check if this step should be skipped
-            if step_name in self.skip_steps:
-                logger.info(f"Skipping step {i+1}/{total_steps}: {step_name}")
-                self.workflow_state['steps_skipped'].append(step_name)
-                continue
             
             logger.info(f"Running step {i+1}/{total_steps}: {step_name}")
             

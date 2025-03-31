@@ -70,11 +70,11 @@ for (d = 0; d < dishes.length; d++) {
             // Determine time label based on timepoint
             timeLabel = "";
             if (timepoint == "t00") {
-                timeLabel = "45min";
+                timeLabel = "t00";
             } else if (timepoint == "t03") {
-                timeLabel = "60min";
+                timeLabel = "t03";
             } else if (timepoint == "t06") {
-                timeLabel = "75min";
+                timeLabel = "t06";
             } else {
                 print("Unknown timepoint: " + timepoint);
                 continue;

@@ -27,25 +27,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CellMaskCreator")
 
-def map_timepoint_to_label(timepoint):
+def get_time_label(timepoint):
     """
-    Map timepoint (t00, t03, etc.) to minute label (45min, 60min, etc.)
+    Map timepoint (t00, t03, etc.) to timepoint label (t00, t03, etc.)
     
     Args:
-        timepoint (str): Timepoint string (e.g., "t00", "t03")
+        timepoint (str): Timepoint label (e.g., "t00", "t03")
         
     Returns:
-        str: Minute label (e.g., "45min", "60min")
+        str: Timepoint label (e.g., "t00", "t03")
     """
     if timepoint == "t00":
-        return "45min"
+        return "t00"
     elif timepoint == "t03":
-        return "60min"
+        return "t03"
     elif timepoint == "t06":
-        return "75min"
+        return "t06"
     else:
-        logger.warning(f"Unknown timepoint: {timepoint}, defaulting to '45min'")
-        return "45min"
+        logger.warning(f"Unknown timepoint: {timepoint}, defaulting to 't00'")
+        return "t00"
 
 def create_macro_file(roi_dir, mask_dir, output_dir):
     """
@@ -138,11 +138,11 @@ for (d = 0; d < dishes.length; d++) {{
             // Determine time label based on timepoint
             timeLabel = "";
             if (timepoint == "t00") {{
-                timeLabel = "45min";
+                timeLabel = "t00";
             }} else if (timepoint == "t03") {{
-                timeLabel = "60min";
+                timeLabel = "t03";
             }} else if (timepoint == "t06") {{
-                timeLabel = "75min";
+                timeLabel = "t06";
             }} else {{
                 print("Unknown timepoint: " + timepoint);
                 continue;
