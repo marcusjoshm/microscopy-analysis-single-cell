@@ -384,19 +384,71 @@ class WorkflowOrchestrator:
         
         # Handle special manual steps that require input
         if step_name == "select_timepoints" and not self.timepoints:
-            print("\nAvailable timepoints:", ', '.join(self.experiment_metadata['timepoints']))
-            print("Enter timepoints to analyze (space-separated, e.g. 't00 t03'):")
-            user_input = input().strip()
-            if user_input:
-                self.timepoints = user_input.split()
-                logger.info(f"Selected timepoints: {self.timepoints}")
+            available_timepoints = self.experiment_metadata['timepoints']
+            print("\nAvailable timepoints:")
+            for i, tp in enumerate(available_timepoints, 1):
+                print(f"{i}. {tp}")
+                
+            print("\nInput options:")
+            print("- Enter timepoints as space-separated text (e.g., 't00 t03')")
+            print("- Enter numbers from the list (e.g., '1 3' for first and third timepoints)")
+            print("- Type 'all' to select all timepoints")
+            
+            user_input = input("\nEnter your selection: ").strip().lower()
+            
+            if user_input == 'all':
+                self.timepoints = available_timepoints
+            elif user_input:
+                # Check if input contains only numbers
+                inputs = user_input.split()
+                try:
+                    # Try to parse as indices (1-based)
+                    indices = [int(x) for x in inputs]
+                    # Convert to actual timepoints if valid indices
+                    if all(1 <= idx <= len(available_timepoints) for idx in indices):
+                        self.timepoints = [available_timepoints[idx-1] for idx in indices]
+                    else:
+                        # If some indices are invalid, treat as direct input
+                        self.timepoints = inputs
+                except ValueError:
+                    # Not numbers, treat as direct timepoint names
+                    self.timepoints = inputs
+                    
+            logger.info(f"Selected timepoints: {self.timepoints}")
+            
         elif step_name == "select_regions" and not self.regions:
-            print("\nAvailable regions:", ', '.join(self.experiment_metadata['regions']))
-            print("Enter regions to analyze (space-separated, e.g. 'R_1 R_2'):")
-            user_input = input().strip()
-            if user_input:
-                self.regions = user_input.split()
-                logger.info(f"Selected regions: {self.regions}")
+            available_regions = self.experiment_metadata['regions']
+            print("\nAvailable regions:")
+            for i, region in enumerate(available_regions, 1):
+                print(f"{i}. {region}")
+                
+            print("\nInput options:")
+            print("- Enter regions as space-separated text (e.g., 'R_1 R_3')")
+            print("- Enter numbers from the list (e.g., '1 3' for first and third regions)")
+            print("- Type 'all' to select all regions")
+            
+            user_input = input("\nEnter your selection: ").strip().lower()
+            
+            if user_input == 'all':
+                self.regions = available_regions
+            elif user_input:
+                # Check if input contains only numbers
+                inputs = user_input.split()
+                try:
+                    # Try to parse as indices (1-based)
+                    indices = [int(x) for x in inputs]
+                    # Convert to actual regions if valid indices
+                    if all(1 <= idx <= len(available_regions) for idx in indices):
+                        self.regions = [available_regions[idx-1] for idx in indices]
+                    else:
+                        # If some indices are invalid, treat as direct input
+                        self.regions = inputs
+                except ValueError:
+                    # Not numbers, treat as direct region names
+                    self.regions = inputs
+                    
+            logger.info(f"Selected regions: {self.regions}")
+            
         else:
             print("\nPress Enter when you have completed this step...")
             input()
