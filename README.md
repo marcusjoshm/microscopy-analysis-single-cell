@@ -20,6 +20,7 @@ This project provides an end-to-end pipeline for analyzing single-cell microscop
 - Python 3.8 or higher
 - ImageJ/FIJI with required plugins
 - Required Python packages (see below)
+- Cellpose for cell segmentation
 
 ### Installation
 
@@ -33,6 +34,171 @@ This project provides an end-to-end pipeline for analyzing single-cell microscop
    ```
    pip install numpy scipy pandas matplotlib scikit-image opencv-python tqdm
    ```
+
+### Cellpose Installation and Setup
+
+This workflow relies on [Cellpose](https://github.com/mouseland/cellpose) for cell segmentation. Cellpose should be installed in a separate dedicated environment:
+
+#### Option 1: Using conda (recommended)
+
+1. Create a dedicated conda environment for Cellpose:
+   ```
+   conda create -n cellpose python=3.9
+   conda activate cellpose
+   ```
+
+2. Install numpy<2 (required for Cellpose compatibility):
+   ```
+   pip install "numpy<2"
+   ```
+
+3. Install Cellpose with GUI support:
+   ```
+   python -m pip install cellpose[gui]
+   ```
+
+4. (Optional) For GPU acceleration (requires NVIDIA GPU):
+   ```
+   conda install pytorch pytorch-cuda=11.6 -c pytorch -c nvidia
+   ```
+
+#### Option 2: Using venv
+
+1. Create a dedicated virtual environment for Cellpose:
+   ```
+   python -m venv cellpose_env
+   source cellpose_env/bin/activate  # On Windows: cellpose_env\Scripts\activate
+   ```
+
+2. Install numpy<2 (required for Cellpose compatibility):
+   ```
+   pip install "numpy<2"
+   ```
+
+3. Install Cellpose with GUI support:
+   ```
+   python -m pip install cellpose[gui]
+   ```
+
+#### Testing Cellpose Installation
+
+To verify your Cellpose installation is working correctly:
+
+1. Activate your Cellpose environment:
+   ```
+   conda activate cellpose  # or source cellpose_env/bin/activate
+   ```
+
+2. Launch the Cellpose GUI:
+   ```
+   python -m cellpose
+   ```
+
+#### Integrating Cellpose with the Workflow
+
+The workflow config file (`workflow_config.json`) should include paths to activate your Cellpose environment. Update the paths in your configuration:
+
+1. For conda environments (example for Linux/Mac):
+   ```json
+   {
+     "steps": [
+       {
+         "name": "interactive_segmentation",
+         "type": "script",
+         "path": "/path/to/your/conda/installation/bin/conda",
+         "args": ["run", "-n", "cellpose", "python", "-m", "cellpose", "--dir", "{grouped_cells_dir}", "--chan", "0", "--save_png"]
+       }
+     ]
+   }
+   ```
+
+2. For venv environments (example for Linux/Mac):
+   ```json
+   {
+     "steps": [
+       {
+         "name": "interactive_segmentation",
+         "type": "script",
+         "path": "/bin/bash",
+         "args": ["-c", "source /path/to/cellpose_env/bin/activate && python -m cellpose --dir {grouped_cells_dir} --chan 0 --save_png"]
+       }
+     ]
+   }
+   ```
+
+For Windows users, adjust paths accordingly using appropriate command syntax.
+
+### Workflow Integration with ImageJ and Cellpose
+
+This workflow combines ImageJ automation for several steps and Cellpose for cell segmentation. The integration works as follows:
+
+1. **ImageJ Steps**: The workflow uses ImageJ for preprocessing, ROI extraction, and mask processing. These steps generate `.ijm` macro files that are executed by ImageJ in headless mode or with GUI interaction as needed.
+
+2. **Cellpose Steps**: Cell segmentation is performed using Cellpose, which requires its own environment. The workflow can be configured to call Cellpose either:
+   - Interactively through the GUI for manual supervision
+   - In headless mode for automated processing
+
+3. **Workflow Configuration**: The `workflow_config.json` file orchestrates these tools by specifying:
+   - The path to your ImageJ installation
+   - The command to activate and run Cellpose
+   - Parameters for each processing step
+
+When setting up the workflow on a new system, ensure both ImageJ and Cellpose are correctly installed and their paths are properly configured in the workflow configuration file.
+
+### Customizing the Cellpose Launch Script
+
+The workflow includes a launch script for Cellpose integration (`scripts/launch_segmentation_tools.sh`). You'll need to customize this script for your specific environment:
+
+1. Open the launch script:
+   ```
+   nano scripts/launch_segmentation_tools.sh
+   ```
+
+2. Update the following paths to match your installation:
+   ```bash
+   # Path to Cellpose installation
+   CELLPOSE_DIR="/path/to/your/cellpose"  # Directory containing Cellpose environment
+   
+   # Path to FIJI/ImageJ executable
+   IMAGEJ_PATH="/path/to/your/Fiji.app/ImageJ-xyz"  # Your ImageJ executable path
+   ```
+
+3. If using conda instead of venv, modify the environment activation:
+   ```bash
+   # Replace this line:
+   source venv/bin/activate
+   
+   # With this for conda:
+   conda activate cellpose
+   ```
+
+Example for conda environment on Windows:
+```bash
+#!/bin/bash
+# Path to Cellpose installation (where conda is installed)
+CELLPOSE_DIR="C:/Users/username/miniconda3"
+
+# Path to FIJI/ImageJ executable
+IMAGEJ_PATH="C:/Program Files/Fiji.app/ImageJ-win64.exe"
+
+# Activate conda environment
+eval "$('C:/Users/username/miniconda3/Scripts/conda.exe' 'shell.bash' 'hook')"
+conda activate cellpose
+
+# Continue with script...
+```
+
+For fully automated workflows, you can also modify the workflow configuration to run Cellpose in headless mode:
+
+```json
+{
+  "name": "interactive_segmentation",
+  "type": "script",
+  "path": "/bin/bash",
+  "args": ["-c", "source /path/to/cellpose_env/bin/activate && python -m cellpose --dir {preprocessed_dir} --pretrained_model cyto --chan 2 --chan2 3 --diameter 30 --flow_threshold 0.4 --no_npy --verbose"],
+  "description": "Run Cellpose segmentation in headless mode"
+}
+```
 
 ### Directory Structure
 
@@ -143,3 +309,33 @@ Example: `Dish_1_Control/Some_Subfolder/R_1_Merged_t00_ch01.tif`
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Troubleshooting
+
+### Cellpose Integration Issues
+
+1. **Cellpose Not Found:**
+   - Verify your Cellpose environment is correctly activated before running `python -m cellpose`
+   - Check that Cellpose is installed in the environment with `pip list | grep cellpose`
+
+2. **GPU Not Detected:**
+   - If you have a CUDA-compatible GPU but Cellpose isn't using it, verify CUDA installation with `nvidia-smi`
+   - Check pytorch installation with `python -c "import torch; print(torch.cuda.is_available())"`
+   - Reinstall pytorch with CUDA support if needed
+
+3. **Numpy Version Errors:**
+   - Cellpose requires numpy version less than 2.0
+   - If you encounter errors like `AttributeError: module 'numpy' has no attribute 'float'`, check your numpy version with `pip list | grep numpy`
+   - Fix by running: `pip install "numpy<2" --force-reinstall`
+
+4. **ImageJ and Cellpose Communication:**
+   - Ensure ROI files are being saved in a format both tools can read
+   - For manual segmentation, export from Cellpose as ROIs and verify they can be opened in ImageJ
+
+5. **Memory Issues:**
+   - If Cellpose crashes due to memory limitations, try:
+     - Processing fewer images at a time
+     - Using a smaller model (like `cyto` instead of `cyto2`)
+     - Setting a smaller diameter parameter
+
+For further assistance with Cellpose, refer to the [official Cellpose documentation](https://github.com/mouseland/cellpose).
