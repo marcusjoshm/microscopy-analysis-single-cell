@@ -5,11 +5,22 @@
   "imagej_path": "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
   "steps": [
     {
-      "name": "setup_directories",
-      "type": "function",
-      "function": "setup_analysis_directories",
-      "function_args": {},
-      "description": "Create directory structure for analysis"
+      "name": "select_datatype",
+      "type": "manual",
+      "instructions": "Select the type of data: single_timepoint or multi_timepoint. You can specify the datatype when running the script with the --datatype option.",
+      "description": "Select the data type (single or multiple timepoints)"
+    },
+    {
+      "name": "select_condition",
+      "type": "manual",
+      "instructions": "Review available conditions: {conditions_list}. Select the conditions to analyze. You can specify conditions when running the script with the --conditions option.",
+      "description": "Select specific conditions for analysis"
+    },
+    {
+      "name": "select_channels",
+      "type": "manual",
+      "instructions": "Review available channels: {channels_list}. Select the channels to analyze. You can specify channels when running the script with the --channels option.",
+      "description": "Select specific channels for analysis"
     },
     {
       "name": "select_timepoints",
@@ -27,14 +38,16 @@
       "name": "bin_images_for_segmentation",
       "type": "python",
       "path": "scripts/bin_images.py",
-      "args": ["--input", "{output_dir}/raw_data", "--output", "{output_dir}/preprocessed"],
+      "args": [
+        "--input", "{output_dir}/raw_data", 
+        "--output", "{output_dir}/preprocessed",
+        "--conditions", "{conditions}",
+        "--regions", "{regions}",
+        "--timepoints", "{timepoints}",
+        "--channels", "{channels}",
+        "--verbose"
+      ],
       "description": "Bin images 4x4 for cell segmentation using Python"
-    },
-    {
-      "name": "manual_quality_check",
-      "type": "manual",
-      "instructions": "Please review the preprocessed images in '{output_dir}/preprocessed' directory.\n\n1. Open each condition folder\n2. Look for artifacts or issues in the binned images\n3. Remove any images that show artifacts or are unsuitable for analysis\n\nWhen finished, press Enter to continue.",
-      "description": "Manual quality check of preprocessed images"
     },
     {
       "name": "interactive_segmentation",
@@ -47,7 +60,11 @@
       "name": "roi_tracking",
       "type": "python",
       "path": "scripts/track_rois.py",
-      "args": ["--input", "{output_dir}/preprocessed", "--recursive"],
+      "args": [
+        "--input", "{output_dir}/preprocessed", 
+        "--timepoints", "{timepoints}",
+        "--recursive" 
+      ],
       "description": "Track cells by matching ROIs between time points"
     },
     {

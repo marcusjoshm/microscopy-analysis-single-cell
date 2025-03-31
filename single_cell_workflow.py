@@ -10,34 +10,30 @@ process microscopy data with specific naming conventions (R_X for regions, tXX f
 time points, chXX for channels) and organize analysis results.
 """
 
-import os
-import sys
-import subprocess
-import argparse
 import logging
-import time
 import json
-import re
+import subprocess
+import sys
+import time
+import os
 import shutil
-import glob
+import re
 from pathlib import Path
 from datetime import datetime
+from typing import List, Optional, Set, Dict, Any
+import argparse
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("workflow.log"),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("SingleCellWorkflow")
+# Configure logging
+logger = logging.getLogger('SingleCellWorkflow')
 
 class WorkflowOrchestrator:
     """Main class to orchestrate the single-cell analysis workflow."""
     
-    def __init__(self, config_path, input_dir, output_dir, skip_steps=None, timepoints=None, regions=None):
+    def __init__(self, config_path, input_dir, output_dir, skip_steps=None, 
+                 datatype: Optional[str] = None, 
+                 conditions: Optional[List[str]] = None, 
+                 channels: Optional[List[str]] = None, 
+                 timepoints=None, regions=None, setup_only=False):
         """
         Initialize the workflow orchestrator.
         
@@ -46,18 +42,32 @@ class WorkflowOrchestrator:
             input_dir (str): Directory containing input data.
             output_dir (str): Directory for output results.
             skip_steps (list): List of step names to skip (optional).
+            datatype (str): Specific data type to analyze (optional).
+            conditions (list): List of specific conditions to analyze (optional).
+            channels (list): List of specific channels to analyze (optional).
             timepoints (list): List of timepoints to analyze (e.g., ["t00", "t03"]).
             regions (list): List of regions to analyze (e.g., ["R_1", "R_2", "R_3"]).
+            setup_only (bool): Flag to indicate if only directory setup should be performed.
         """
         self.config_path = config_path
         self.input_dir = Path(input_dir).resolve()
         self.output_dir = Path(output_dir).resolve()
         self.skip_steps = skip_steps or []
+        self.selected_datatype = datatype
+        self.selected_conditions = conditions or []
+        self.selected_channels = channels if channels is not None else []
         self.timepoints = timepoints or []
         self.regions = regions or []
+        self.setup_only = setup_only
+        
+        # --- BEGIN DEBUG LOG ---
+        logger.debug(f"__init__: self.selected_conditions = {self.selected_conditions}")
+        logger.debug(f"__init__: self.regions = {self.regions}")
+        # --- END DEBUG LOG ---
         
         # Load configuration
         self.config = self._load_config()
+        self.imagej_path = self.config.get('imagej_path', 'ImageJ') # Get ImageJ path
         
         # Extract experiment metadata from directory structure
         self.experiment_metadata = self._extract_experiment_metadata()
@@ -71,8 +81,16 @@ class WorkflowOrchestrator:
             'steps_completed': [],
             'steps_skipped': [],
             'current_step': None,
-            'experiment_metadata': self.experiment_metadata
+            'experiment_metadata': self.experiment_metadata,
+            'selected_datatype': self.selected_datatype,
+            'selected_conditions': self.selected_conditions,
+            'selected_channels': self.selected_channels,
+            'selected_timepoints': self.timepoints,
+            'selected_regions': self.regions
         }
+        
+        # Load or initialize state
+        self.state_file = self.output_dir / '.workflow_state.json'
         
     def _extract_experiment_metadata(self):
         """
@@ -86,7 +104,8 @@ class WorkflowOrchestrator:
             'conditions': [],
             'regions': set(),
             'timepoints': set(),
-            'channels': set()
+            'channels': set(),
+            'datatype_inferred': 'multi_timepoint'
         }
         
         # Find all condition directories (Dish_X_*)
@@ -118,74 +137,86 @@ class WorkflowOrchestrator:
         metadata['channels'] = sorted(list(metadata['channels']))
         metadata['conditions'] = sorted(metadata['conditions'])
         
+        # Infer datatype based on number of timepoints found
+        if len(metadata['timepoints']) <= 1:
+            metadata['datatype_inferred'] = 'single_timepoint'
+        
         return metadata
     
     def setup_analysis_directories(self):
         """
-        Set up the directory structure for analysis, following the pattern from analysis_setup.sh.
-        This creates the necessary directories for the analysis workflow.
+        Set up the directory structure for analysis based on selected conditions, regions, and timepoints.
+        Defaults to using all available items if no specific selections are made via command line.
         
         Returns:
             bool: True if successful, False otherwise
         """
-        logger.info("Setting up analysis directory structure")
+        logger.info("Setting up analysis directory structure based on selections")
         
         try:
-            # Define the main directories to create
+            # Determine target items based on selections or defaults from metadata
+            conditions_to_process = self.selected_conditions or self.experiment_metadata.get('conditions', [])
+            regions_to_process = self.regions or self.experiment_metadata.get('regions', [])
+            timepoints_to_process = self.timepoints or self.experiment_metadata.get('timepoints', [])
+
+            logger.info(f"Creating directories for Conditions: {conditions_to_process}")
+            logger.info(f"Creating directories for Regions: {regions_to_process}")
+            logger.info(f"Creating directories for Timepoints: {timepoints_to_process}")
+
+            # Define the main directories to create (relative to output_dir)
             main_dirs = ['analysis', 'cells', 'combined_masks', 'grouped_cells', 
-                         'grouped_masks', 'masks', 'raw_data', 'ROIs', 'scripts']
+                         'grouped_masks', 'masks', 'raw_data', 'ROIs', 'macros'] # Added macros
             
             # Create the main directories
             for dir_name in main_dirs:
-                os.makedirs(self.output_dir / dir_name, exist_ok=True)
+                (self.output_dir / dir_name).mkdir(parents=True, exist_ok=True)
             
-            # Move all experimental directories to raw_data
-            # First, identify all experimental condition directories
-            for condition_dir in self.input_dir.glob("Dish_*"):
-                if condition_dir.is_dir():
-                    # Create destination directory in raw_data
-                    dest_dir = self.output_dir / "raw_data" / condition_dir.name
-                    os.makedirs(dest_dir, exist_ok=True)
+            # --- Copy raw data (unchanged section) ---
+            logger.info("Copying selected raw data...")
+            input_conditions_found = {item.name for item in self.input_dir.glob("Dish_*") if item.is_dir()}
+            
+            for condition_name in conditions_to_process:
+                if condition_name in input_conditions_found:
+                    source_cond_dir = self.input_dir / condition_name
+                    dest_cond_dir = self.output_dir / "raw_data" / condition_name
+                    dest_cond_dir.mkdir(parents=True, exist_ok=True) # Ensure condition dir exists in raw_data
                     
-                    # Copy contents instead of moving, to preserve original data
-                    for item in condition_dir.glob("**/*"):
+                    # Copy files, creating subdirs as needed
+                    for item in source_cond_dir.glob("**/*"):
                         if item.is_file():
-                            # Construct relative path from condition directory
-                            rel_path = item.relative_to(condition_dir)
-                            # Create target directory
-                            target_dir = dest_dir / rel_path.parent
-                            os.makedirs(target_dir, exist_ok=True)
-                            # Copy file
-                            shutil.copy2(item, target_dir / item.name)
+                            rel_path = item.relative_to(source_cond_dir)
+                            target_file = dest_cond_dir / rel_path
+                            target_file.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.copy2(item, target_file)
+                else:
+                     logger.warning(f"Selected condition '{condition_name}' not found in input directory {self.input_dir}, skipping copy.")
+            logger.info("Raw data copying complete.")
+            # --- End of raw data copy section ---
+
+            # Create condition-level subdirectories in analysis folders ONLY for processed conditions
+            base_dirs_with_condition_subdir = ['cells', 'combined_masks', 'grouped_cells', 
+                                               'grouped_masks', 'masks', 'ROIs']
+            for base_dir_name in base_dirs_with_condition_subdir:
+                base_path = self.output_dir / base_dir_name
+                for condition_name in conditions_to_process:
+                    (base_path / condition_name).mkdir(parents=True, exist_ok=True)
             
-            # For each condition directory in raw_data, create corresponding subdirectories
-            for condition_dir in (self.output_dir / "raw_data").glob("*"):
-                if condition_dir.is_dir():
-                    dir_name = condition_dir.name
-                    for base_dir in ['cells', 'combined_masks', 'grouped_cells', 
-                                     'grouped_masks', 'masks', 'ROIs']:
-                        os.makedirs(self.output_dir / base_dir / dir_name, exist_ok=True)
-            
-            # Create additional subdirectories for regions and timepoints
-            extra_subdirs = []
-            # Generate subdirectory names based on regions and timepoints from metadata
-            # Format: R_X_tXX where X is region number and tXX is timepoint (t00, t03, etc.)
-            for region in self.experiment_metadata['regions']:
-                for time_suffix in ['t00', 't03']:  # Hardcoded time labels
-                    extra_subdirs.append(f"{region}_{time_suffix}")
-            
-            # Create these subdirectories
-            for base_dir in ['cells', 'grouped_cells', 'grouped_masks', 'masks']:
-                for condition_subdir in (self.output_dir / base_dir).glob("*"):
-                    if condition_subdir.is_dir():
-                        for extra_subdir in extra_subdirs:
-                            os.makedirs(condition_subdir / extra_subdir, exist_ok=True)
+            # Create region-timepoint subdirectories ONLY for processed conditions, regions, and timepoints
+            base_dirs_with_region_time_subdir = ['cells', 'grouped_cells', 'grouped_masks', 'masks']
+            for base_dir_name in base_dirs_with_region_time_subdir:
+                base_path = self.output_dir / base_dir_name
+                for condition_name in conditions_to_process:
+                    condition_path = base_path / condition_name
+                    for region in regions_to_process:
+                        for timepoint in timepoints_to_process:
+                            subdir_name = f"{region}_{timepoint}"
+                            (condition_path / subdir_name).mkdir(parents=True, exist_ok=True)
             
             logger.info("Directory setup complete")
             return True
             
         except Exception as e:
-            logger.error(f"Error setting up directory structure: {e}")
+            logger.error(f"Error setting up directory structure: {e}", exc_info=True) # Add traceback
             return False
     
     def _load_config(self):
@@ -224,19 +255,17 @@ class WorkflowOrchestrator:
             
         logger.info(f"Running bash script: {script_path}")
         try:
+            # Run without capturing stdout/stderr
             process = subprocess.run(
-                cmd, 
+                cmd,
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                encoding='utf-8'
             )
             logger.info(f"Bash script completed successfully: {script_path}")
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"Bash script failed: {e}")
-            logger.error(f"STDOUT: {e.stdout}")
-            logger.error(f"STDERR: {e.stderr}")
+            logger.error(f"Bash script {script_path} failed with exit code {e.returncode}")
             return False
     
     def run_python_script(self, script_path, args=None):
@@ -250,26 +279,25 @@ class WorkflowOrchestrator:
         Returns:
             bool: True if successful, False otherwise.
         """
-        cmd = [sys.executable, script_path]
-        if args:
-            cmd.extend(args)
-            
-        logger.info(f"Running Python script: {script_path}")
+        args = args or []
+        command = [sys.executable, script_path] + args
+        
+        logger.info(f"Running Python script: {script_path} with args: {args}") # Log arguments for clarity
+        
         try:
+            # Run without capturing stdout/stderr
             process = subprocess.run(
-                cmd, 
+                command,
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                encoding='utf-8'
             )
             logger.info(f"Python script completed successfully: {script_path}")
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"Python script failed: {e}")
-            logger.error(f"STDOUT: {e.stdout}")
-            logger.error(f"STDERR: {e.stderr}")
+            logger.error(f"Python script {script_path} failed with exit code {e.returncode}")
             return False
+    
     def run_imagej_macro(self, macro_path, args=None):
         """
         Run an ImageJ macro with the specified arguments.
@@ -298,21 +326,17 @@ class WorkflowOrchestrator:
         logger.info(f"Running ImageJ command: {' '.join(cmd)}")
         
         try:
+            # Run without capturing stdout/stderr
             process = subprocess.run(
                 cmd,
                 check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
                 text=True,
-                shell=True  # ImageJ might need shell=True
+                encoding='utf-8'
             )
             logger.info(f"ImageJ macro completed successfully: {macro_path}")
-            logger.info(f"ImageJ output: {process.stdout}")
             return True
         except subprocess.CalledProcessError as e:
-            logger.error(f"ImageJ macro failed: {e}")
-            logger.error(f"STDOUT: {e.stdout}")
-            logger.error(f"STDERR: {e.stderr}")
+            logger.error(f"ImageJ macro {macro_path} failed with exit code {e.returncode}")
             return False
     
     def launch_gui_application(self, app_path, instructions):
@@ -374,8 +398,10 @@ class WorkflowOrchestrator:
                                .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
         
         # Replace timepoints and regions lists
-        instructions = instructions.replace('{timepoints_list}', ', '.join(self.experiment_metadata['timepoints']))
-        instructions = instructions.replace('{regions_list}', ', '.join(self.experiment_metadata['regions']))
+        instructions = instructions.replace('{conditions_list}', ', '.join(self.experiment_metadata['conditions']))
+        instructions = instructions.replace('{channels_list}', ', '.join(self.experiment_metadata['channels']))
+        instructions = instructions.replace('{timepoints_list}', ', '.join(self.experiment_metadata.get('timepoints', [])))
+        instructions = instructions.replace('{regions_list}', ', '.join(self.experiment_metadata.get('regions', [])))
         
         print("\n" + "="*80)
         print(f"MANUAL STEP REQUIRED: {step_name}")
@@ -383,77 +409,115 @@ class WorkflowOrchestrator:
         print(instructions)
         
         # Handle special manual steps that require input
-        if step_name == "select_timepoints" and not self.timepoints:
-            available_timepoints = self.experiment_metadata['timepoints']
-            print("\nAvailable timepoints:")
-            for i, tp in enumerate(available_timepoints, 1):
-                print(f"{i}. {tp}")
+        if step_name == "select_datatype" and not self.selected_datatype:
+            available_datatypes = ["single_timepoint", "multi_timepoint"]
+            inferred_datatype = self.experiment_metadata.get('datatype_inferred', 'multi_timepoint')
+            print(f"\nDetected datatype based on found timepoints: {inferred_datatype}")
+            print("Select data type:")
+            for i, dt in enumerate(available_datatypes, 1):
+                print(f"{i}. {dt}")
+            
+            user_input = input("Enter selection (number or name, press Enter for detected default): ").strip().lower()
+            
+            if not user_input:
+                self.selected_datatype = inferred_datatype
+            elif user_input.isdigit() and 1 <= int(user_input) <= len(available_datatypes):
+                self.selected_datatype = available_datatypes[int(user_input) - 1]
+            elif user_input in available_datatypes:
+                self.selected_datatype = user_input
+            else:
+                logger.warning(f"Invalid datatype selection '{user_input}'. Using detected default: {inferred_datatype}")
+                self.selected_datatype = inferred_datatype
                 
-            print("\nInput options:")
-            print("- Enter timepoints as space-separated text (e.g., 't00 t03')")
-            print("- Enter numbers from the list (e.g., '1 3' for first and third timepoints)")
-            print("- Type 'all' to select all timepoints")
+            logger.info(f"Selected datatype: {self.selected_datatype}")
+            self.workflow_state['selected_datatype'] = self.selected_datatype
+        
+        elif step_name == "select_condition" and not self.selected_conditions:
+            available_items = self.experiment_metadata['conditions']
+            item_type = "conditions"
+            self._handle_list_selection(available_items, item_type, self.selected_conditions)
+            self.workflow_state['selected_conditions'] = self.selected_conditions
             
-            user_input = input("\nEnter your selection: ").strip().lower()
+        elif step_name == "select_channels" and not self.selected_channels:
+            available_items = self.experiment_metadata['channels']
+            item_type = "channels"
+            self._handle_list_selection(available_items, item_type, self.selected_channels)
+            self.workflow_state['selected_channels'] = self.selected_channels
             
-            if user_input == 'all':
-                self.timepoints = available_timepoints
-            elif user_input:
-                # Check if input contains only numbers
-                inputs = user_input.split()
-                try:
-                    # Try to parse as indices (1-based)
-                    indices = [int(x) for x in inputs]
-                    # Convert to actual timepoints if valid indices
-                    if all(1 <= idx <= len(available_timepoints) for idx in indices):
-                        self.timepoints = [available_timepoints[idx-1] for idx in indices]
-                    else:
-                        # If some indices are invalid, treat as direct input
-                        self.timepoints = inputs
-                except ValueError:
-                    # Not numbers, treat as direct timepoint names
-                    self.timepoints = inputs
-                    
-            logger.info(f"Selected timepoints: {self.timepoints}")
+        elif step_name == "select_timepoints" and not self.timepoints:
+            available_items = self.experiment_metadata['timepoints']
+            item_type = "timepoints"
+            self._handle_list_selection(available_items, item_type, self.timepoints)
+            self.workflow_state['selected_timepoints'] = self.timepoints
             
         elif step_name == "select_regions" and not self.regions:
-            available_regions = self.experiment_metadata['regions']
-            print("\nAvailable regions:")
-            for i, region in enumerate(available_regions, 1):
-                print(f"{i}. {region}")
-                
-            print("\nInput options:")
-            print("- Enter regions as space-separated text (e.g., 'R_1 R_3')")
-            print("- Enter numbers from the list (e.g., '1 3' for first and third regions)")
-            print("- Type 'all' to select all regions")
-            
-            user_input = input("\nEnter your selection: ").strip().lower()
-            
-            if user_input == 'all':
-                self.regions = available_regions
-            elif user_input:
-                # Check if input contains only numbers
-                inputs = user_input.split()
-                try:
-                    # Try to parse as indices (1-based)
-                    indices = [int(x) for x in inputs]
-                    # Convert to actual regions if valid indices
-                    if all(1 <= idx <= len(available_regions) for idx in indices):
-                        self.regions = [available_regions[idx-1] for idx in indices]
-                    else:
-                        # If some indices are invalid, treat as direct input
-                        self.regions = inputs
-                except ValueError:
-                    # Not numbers, treat as direct region names
-                    self.regions = inputs
-                    
-            logger.info(f"Selected regions: {self.regions}")
+            available_items = self.experiment_metadata['regions']
+            item_type = "regions"
+            self._handle_list_selection(available_items, item_type, self.regions)
+            self.workflow_state['selected_regions'] = self.regions
             
         else:
             print("\nPress Enter when you have completed this step...")
             input()
         
         return True
+    
+    def _handle_list_selection(self, available_items: List[str], item_type: str, target_list: List[str]):
+        """Helper function to handle selection from a list of items."""
+        if not available_items:
+            logger.warning(f"No available {item_type} found in metadata.")
+            print(f"\nNo available {item_type} found. Skipping selection.")
+            return
+        
+        print(f"\nAvailable {item_type}:")
+        for i, item in enumerate(available_items, 1):
+            print(f"{i}. {item}")
+        
+        print(f"\nInput options for {item_type}:")
+        print(f"- Enter {item_type} as space-separated text (e.g., '{available_items[0]} {available_items[-1]}')")
+        print(f"- Enter numbers from the list (e.g., '1 {len(available_items)}')")
+        print(f"- Type 'all' to select all {item_type}")
+        
+        user_input = input("\nEnter your selection: ").strip()
+        
+        if user_input.lower() == 'all':
+            target_list.extend(available_items)
+        elif user_input:
+            inputs = user_input.split()
+            try:
+                # Try to parse as indices (1-based)
+                indices = [int(x) for x in inputs]
+                if all(1 <= idx <= len(available_items) for idx in indices):
+                    selected_items = [available_items[idx-1] for idx in indices]
+                    target_list.extend(selected_items)
+                else:
+                    # If some indices are invalid, treat as direct input but check validity
+                    valid_inputs = [inp for inp in inputs if inp in available_items]
+                    invalid_inputs = [inp for inp in inputs if inp not in available_items]
+                    if invalid_inputs:
+                        logger.warning(f"Ignoring invalid {item_type}: {', '.join(invalid_inputs)}")
+                    if valid_inputs:
+                        target_list.extend(valid_inputs)
+                    else:
+                        logger.warning(f"No valid {item_type} selected from input: '{user_input}'")
+            except ValueError:
+                # Not numbers, treat as direct item names, check validity
+                valid_inputs = [inp for inp in inputs if inp in available_items]
+                invalid_inputs = [inp for inp in inputs if inp not in available_items]
+                if invalid_inputs:
+                    logger.warning(f"Ignoring invalid {item_type}: {', '.join(invalid_inputs)}")
+                if valid_inputs:
+                    target_list.extend(valid_inputs)
+                else:
+                    logger.warning(f"No valid {item_type} selected from input: '{user_input}'")
+            
+        if not target_list:
+            logger.warning(f"No {item_type} were selected. Proceeding without specific {item_type} filter.")
+            print(f"\nWarning: No {item_type} selected.")
+        
+        # Remove duplicates and sort
+        target_list[:] = sorted(list(set(target_list)))
+        logger.info(f"Selected {item_type}: {target_list}")
     
     def run_workflow(self):
         """
@@ -469,6 +533,13 @@ class WorkflowOrchestrator:
         logger.info(f"Input directory: {self.input_dir}")
         logger.info(f"Output directory: {self.output_dir}")
         
+        # Log selected items
+        if self.selected_datatype:
+            logger.info(f"Selected data type: {self.selected_datatype}")
+        if self.selected_conditions:
+            logger.info(f"Selected conditions: {', '.join(self.selected_conditions)}")
+        if self.selected_channels:
+            logger.info(f"Selected channels: {', '.join(self.selected_channels)}")
         # Log selected regions and timepoints if specified
         if self.regions:
             logger.info(f"Selected regions: {', '.join(self.regions)}")
@@ -481,6 +552,7 @@ class WorkflowOrchestrator:
         logger.info(f"  All available regions: {', '.join(self.experiment_metadata['regions'])}")
         logger.info(f"  All available timepoints: {', '.join(self.experiment_metadata['timepoints'])}")
         logger.info(f"  All available channels: {', '.join(self.experiment_metadata['channels'])}")
+        logger.info(f"  Inferred data type: {self.experiment_metadata['datatype_inferred']}")
         
         for i, step in enumerate(steps):
             step_name = step.get('name', f"Step {i+1}")
@@ -498,30 +570,59 @@ class WorkflowOrchestrator:
             # Replace placeholders in args
             if isinstance(args, list):
                 processed_args = []
-                for arg in args:
+                idx = 0
+                while idx < len(args):
+                    arg = args[idx]
                     # Base replacements
                     arg = arg.replace('{input_dir}', str(self.input_dir)) \
                              .replace('{output_dir}', str(self.output_dir)) \
                              .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
+
+                    # Handle list placeholders - extend args instead of joining into one string
+                    if arg == '--conditions' and '{conditions}' in args[idx+1] and self.selected_conditions:
+                        processed_args.append(arg) # Add the flag ('--conditions')
+                        processed_args.extend(self.selected_conditions) # Add each selected condition as a separate arg
+                        idx += 2 # Skip the flag and the placeholder
+                        continue
+                    elif arg == '--channels' and '{channels}' in args[idx+1] and self.selected_channels:
+                        processed_args.append(arg)
+                        processed_args.extend(self.selected_channels)
+                        idx += 2
+                        continue
+                    elif arg == '--regions' and '{regions}' in args[idx+1] and self.regions:
+                        processed_args.append(arg)
+                        processed_args.extend(self.regions)
+                        idx += 2
+                        continue
+                    elif arg == '--timepoints' and '{timepoints}' in args[idx+1] and self.timepoints:
+                        processed_args.append(arg)
+                        processed_args.extend(self.timepoints)
+                        idx += 2
+                        continue
                     
-                    # Replace region and timepoint placeholders if specific ones are selected
-                    if '{regions}' in arg and self.regions:
-                        # Always use space separator for analyze_cell_masks.py
-                        if 'analyze_cell_masks.py' in script_path:
-                            arg = arg.replace('{regions}', ' '.join(self.regions))
-                        else:
-                            separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
-                            arg = arg.replace('{regions}', separator.join(self.regions))
-                    
-                    if '{timepoints}' in arg and self.timepoints:
-                        # Always use space separator for analyze_cell_masks.py
-                        if 'analyze_cell_masks.py' in script_path:
-                            arg = arg.replace('{timepoints}', ' '.join(self.timepoints))
-                        else:
-                            separator = ',' if step_type in ['python', 'imagej_macro'] else ' '
-                            arg = arg.replace('{timepoints}', separator.join(self.timepoints))
-                        
+                    # If placeholder exists but no selection, remove the flag and placeholder
+                    if arg == '--conditions' and '{conditions}' in args[idx+1]:
+                         idx += 2
+                         continue
+                    elif arg == '--channels' and '{channels}' in args[idx+1]:
+                         idx += 2
+                         continue
+                    elif arg == '--regions' and '{regions}' in args[idx+1]:
+                         idx += 2
+                         continue
+                    elif arg == '--timepoints' and '{timepoints}' in args[idx+1]:
+                         idx += 2
+                         continue
+                         
+                    # Handle non-list replacements or flags without list values (like --verbose)
+                    # Replace placeholders if they exist even without specific selections (might become empty string)
+                    arg = arg.replace('{conditions}', '') # Should not happen if logic above works
+                    arg = arg.replace('{channels}', '')
+                    arg = arg.replace('{regions}', '')
+                    arg = arg.replace('{timepoints}', '')
                     processed_args.append(arg)
+                    idx += 1
+                
                 args = processed_args
             elif isinstance(args, str):
                 args = args.replace('{input_dir}', str(self.input_dir)) \
@@ -611,6 +712,12 @@ def main():
                         help='Output directory for results')
     parser.add_argument('--skip', '-s', nargs='+', default=[],
                         help='Steps to skip (by name)')
+    parser.add_argument('--datatype', type=str, choices=['single_timepoint', 'multi_timepoint'],
+                        help='Specify the data type (overrides manual selection)')
+    parser.add_argument('--conditions', nargs='+', default=[],
+                        help='Specific conditions to analyze (e.g., Dish_1 Dish_2)')
+    parser.add_argument('--channels', nargs='+', default=[],
+                        help='Specific channels to analyze (e.g., ch00 ch01)')
     parser.add_argument('--timepoints', '-t', nargs='+', default=[],
                         help='Specific timepoints to analyze (e.g., t00 t03)')
     parser.add_argument('--regions', '-r', nargs='+', default=[],
@@ -626,8 +733,12 @@ def main():
         input_dir=args.input,
         output_dir=args.output,
         skip_steps=args.skip,
+        datatype=args.datatype,
+        conditions=args.conditions,
+        channels=args.channels,
         timepoints=args.timepoints,
-        regions=args.regions
+        regions=args.regions,
+        setup_only=args.setup_only
     )
     
     # Set up directory structure (this replaces your analysis_setup.sh)
@@ -652,4 +763,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # Configure logging at the start
+    logging.basicConfig(level=logging.INFO, 
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                        handlers=[logging.StreamHandler()]) # Ensure logs go to console
+    
     main()

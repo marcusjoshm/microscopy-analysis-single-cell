@@ -64,9 +64,6 @@ def find_mask_groups(mask_dir):
         logger.warning(f"No mask files matching *_bin_*.tif found in {mask_dir}")
         return mask_groups
     
-    # Log found files
-    logger.info(f"Found {len(mask_files)} mask files in {mask_dir}")
-    
     # Group mask files based on their prefix
     for mask_file in mask_files:
         mask_name = mask_file.name
@@ -80,10 +77,6 @@ def find_mask_groups(mask_dir):
         if prefix not in mask_groups:
             mask_groups[prefix] = []
         mask_groups[prefix].append(mask_file)
-    
-    # Log group information
-    for prefix, files in mask_groups.items():
-        logger.info(f"Found group {prefix} with {len(files)} files")
     
     return mask_groups
 
@@ -131,9 +124,6 @@ def combine_masks(mask_dir, output_dir):
                 logger.error(f"Unable to read {mask_files[0]}. Skipping group {prefix}.")
                 continue
                 
-            # Log first image properties for debugging
-            logger.info(f"Read image {mask_files[0].name}: shape={first_mask.shape}, dtype={first_mask.dtype}, min={first_mask.min()}, max={first_mask.max()}")
-            
             # Initialize combined mask
             combined_mask = np.zeros_like(first_mask, dtype=np.uint8)
             

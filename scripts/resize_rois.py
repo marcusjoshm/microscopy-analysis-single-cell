@@ -51,10 +51,6 @@ output_dir = "{output_dir}";
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
 
-// Define the regions and timepoints to process
-regions = newArray("R_1", "R_2", "R_3");
-timepoints = newArray("t00", "t03");
-
 // Process all condition directories in input directory
 condition_dirs = getFileList(input_dir);
 num_processed = 0;
@@ -90,121 +86,104 @@ for (c = 0; c < condition_dirs.length; c++) {{
         subdir_path = condition_path + "/" + subdir;
         print("Processing subdirectory: " + subdir_path);
 
-        // Get all files in the subdirectory
+        // Get all ROI zip files in the subdirectory
         subdir_files = getFileList(subdir_path);
-
-        // Loop through all regions and timepoints
-        for (r = 0; r < regions.length; r++) {{
-            for (t = 0; t < timepoints.length; t++) {{
-                region = regions[r];
-                tp = timepoints[t];
-                
-                // Look for ROI files that match the pattern
-                roi_file = "";
-                for (i = 0; i < subdir_files.length; i++) {{
-                    file_name = subdir_files[i];
-                    if (endsWith(file_name, "_rois.zip") && 
-                        indexOf(file_name, region) != -1 && 
-                        indexOf(file_name, tp) != -1) {{
-                        roi_file = file_name;
-                        break;
-                    }}
-                }}
-
-                if (roi_file == "") {{
-                    print("No ROI zip file found for " + condition_name + " " + region + " " + tp);
-                    continue;
-                }}
-
-                // Find corresponding image file
-                base_name = substring(roi_file, 0, indexOf(roi_file, "_rois.zip"));
-                image_file = base_name + ".tif";
-                image_path = subdir_path + "/" + image_file;
-
-                if (!File.exists(image_path)) {{
-                    print("Image file not found: " + image_path);
-                    continue;
-                }}
-
-                roi_path = subdir_path + "/" + roi_file;
-                
-                // Create output ROI file name
-                // Remove 'bin4x4_' prefix if present
-                if (startsWith(base_name, "bin4x4_")) {{
-                    new_base_name = substring(base_name, lengthOf("bin4x4_"), lengthOf(base_name));
-                }} else {{
-                    new_base_name = base_name;
-                }}
-                
-                new_roi_file = "ROIs_" + new_base_name + "_rois.zip";
-                new_roi_path = output_condition_dir + "/" + new_roi_file;
-
-                print("Processing: " + region + " - " + tp);
-                print("  ROI file: " + roi_path);
-                print("  Image file: " + image_path);
-                print("  Output ROI file: " + new_roi_path);
-
-                // ----- Process the Image and ROIs -----
-                print("  Opening image: " + image_path);
-                open(image_path);
-                image_title = getTitle();
-
-                print("  Opening ROI file: " + roi_path);
-                // Initialize ROI Manager
-                roiManager("reset");
-                
-                // Open ROIs
-                roiManager("open", roi_path);
-
-                num_original_rois = roiManager("count");
-                print("  Found " + num_original_rois + " ROIs to process");
-
-                for (j = 0; j < num_original_rois; j++) {{
-                    // Select the input image and ROI
-                    selectWindow(image_title);
-                    // Duplicate the image and create a mask
-                    run("Duplicate...", "title=makeMask");
-                    selectWindow("makeMask");
-                    roiManager("Select", j);
-
-                    // Create a mask from the ROI
-                    run("Create Mask");
-                    
-                    // Resize the mask to match original image (4x larger since we binned 4x4)
-                    orig_width = getWidth();
-                    orig_height = getHeight();
-                    new_width = orig_width * 4;
-                    new_height = orig_height * 4;
-                    run("Size...", "width=" + new_width + " height=" + new_height + " interpolation=None");
-
-                    // Create a selection from the resized mask
-                    run("Create Selection");
-                    roiManager("Add");
-
-                    // Close the duplicate and mask windows
-                    close(); // Close mask
-                    close(); // Close duplicate
-                }}
-
-                // Remove the original ROIs (they're at the beginning of the list)
-                for (j = 0; j < num_original_rois; j++) {{
-                    roiManager("Select", 0);
-                    roiManager("Delete");
-                }}
-
-                // Save the new ROIs
-                print("  Saving " + (roiManager("count")) + " resized ROIs to: " + new_roi_path);
-                roiManager("Save", new_roi_path);
-                
-                // Close the image
-                selectWindow(image_title);
-                close();
-                
-                // Reset ROI Manager for next round
-                roiManager("reset");
-                
-                num_processed++;
+        for (i = 0; i < subdir_files.length; i++) {{
+            roi_file = subdir_files[i];
+            
+            // Process only files ending with _rois.zip
+            if (!endsWith(roi_file, "_rois.zip")) {{
+                continue;
             }}
+
+            // Find corresponding image file
+            base_name = substring(roi_file, 0, indexOf(roi_file, "_rois.zip"));
+            image_file = base_name + ".tif";
+            image_path = subdir_path + "/" + image_file;
+
+            if (!File.exists(image_path)) {{
+                print("Image file not found: " + image_path);
+                continue;
+            }}
+
+            roi_path = subdir_path + "/" + roi_file;
+            
+            // Create output ROI file name
+            // Remove 'bin4x4_' prefix if present
+            if (startsWith(base_name, "bin4x4_")) {{
+                new_base_name = substring(base_name, lengthOf("bin4x4_"), lengthOf(base_name));
+            }} else {{
+                new_base_name = base_name;
+            }}
+            
+            new_roi_file = "ROIs_" + new_base_name + "_rois.zip";
+            new_roi_path = output_condition_dir + "/" + new_roi_file;
+
+            print("Processing: " + base_name);
+            print("  ROI file: " + roi_path);
+            print("  Image file: " + image_path);
+            print("  Output ROI file: " + new_roi_path);
+
+            // ----- Process the Image and ROIs -----
+            print("  Opening image: " + image_path);
+            open(image_path);
+            image_title = getTitle();
+
+            print("  Opening ROI file: " + roi_path);
+            // Initialize ROI Manager
+            roiManager("reset");
+            
+            // Open ROIs
+            roiManager("open", roi_path);
+
+            num_original_rois = roiManager("count");
+            print("  Found " + num_original_rois + " ROIs to process");
+
+            for (j = 0; j < num_original_rois; j++) {{
+                // Select the input image and ROI
+                selectWindow(image_title);
+                // Duplicate the image and create a mask
+                run("Duplicate...", "title=makeMask");
+                selectWindow("makeMask");
+                roiManager("Select", j);
+
+                // Create a mask from the ROI
+                run("Create Mask");
+                
+                // Resize the mask to match original image (4x larger since we binned 4x4)
+                orig_width = getWidth();
+                orig_height = getHeight();
+                new_width = orig_width * 4;
+                new_height = orig_height * 4;
+                run("Size...", "width=" + new_width + " height=" + new_height + " interpolation=None");
+
+                // Create a selection from the resized mask
+                run("Create Selection");
+                roiManager("Add");
+
+                // Close the duplicate and mask windows
+                close(); // Close mask
+                close(); // Close duplicate
+            }}
+
+            // Remove the original ROIs (they're at the beginning of the list)
+            for (j = 0; j < num_original_rois; j++) {{
+                roiManager("Select", 0);
+                roiManager("Delete");
+            }}
+
+            // Save the new ROIs
+            print("  Saving " + (roiManager("count")) + " resized ROIs to: " + new_roi_path);
+            roiManager("Save", new_roi_path);
+            
+            // Close the original binned image
+            selectWindow(image_title);
+            close();
+            
+            // Reset ROI Manager for next round
+            roiManager("reset");
+            
+            num_processed++;
         }}
     }}
 }}

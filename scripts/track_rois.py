@@ -27,10 +27,7 @@ from pathlib import Path
 import re
 
 # Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', stream=sys.stdout)
 logger = logging.getLogger("ROITracker")
 
 def load_roi_dict(zip_file_path):
@@ -263,77 +260,74 @@ def process_roi_pair(zip_file1, zip_file2):
     # Save over the second zip file
     return save_zip_from_bytes(reordered_bytes, zip_file2)
 
-def find_matching_roi_files(directory, pattern_t0="*t00*_rois.zip", pattern_t1="*t03*_rois.zip"):
+def find_roi_files_recursive(directory, t0: str, t1: str):
     """
-    Find matching pairs of ROI files in a directory.
-    
-    Args:
-        directory (str): Directory to search
-        pattern_t0 (str): Glob pattern for the first time point
-        pattern_t1 (str): Glob pattern for the second time point
-        
-    Returns:
-        list: List of tuples (t0_file, t1_file) with matching ROI files
-    """
-    # First, get all ROI files
-    t0_files = glob.glob(os.path.join(directory, pattern_t0))
-    t1_files = glob.glob(os.path.join(directory, pattern_t1))
-    
-    # Group files by region and condition
-    pairs = []
-    for t0_file in t0_files:
-        t0_name = os.path.basename(t0_file)
-        # Replace t00 with t03 to find the matching t1 file
-        expected_t1_name = t0_name.replace("t00", "t03")
-        t1_file = os.path.join(os.path.dirname(t0_file), expected_t1_name)
-        
-        if os.path.exists(t1_file):
-            pairs.append((t0_file, t1_file))
-    
-    return pairs
-
-def find_roi_files_recursive(directory, t0_pattern="*t00*_rois.zip", t1_pattern="*t03*_rois.zip"):
-    """
-    Recursively find matching pairs of ROI files in a directory and all subdirectories.
+    Recursively find pairs of ROI zip files matching t0 and t1 timepoints based on common filename prefixes.
     
     Args:
         directory (str): Root directory to search
-        t0_pattern (str): Glob pattern for the first time point
-        t1_pattern (str): Glob pattern for the second time point
+        t0 (str): The identifier for the first timepoint (e.g., 't00')
+        t1 (str): The identifier for the second timepoint (e.g., 't03')
         
     Returns:
-        list: List of tuples (t0_file, t1_file) with matching ROI files
+        list: A list of tuples, where each tuple contains (path_to_t0_file, path_to_t1_file)
     """
-    all_pairs = []
+    t0_pattern = f"**/*{t0}*_rois.zip"
+    t1_pattern = f"**/*{t1}*_rois.zip"
+    logger.info(f"Searching for ROI pairs recursively in '{directory}' using timepoints '{t0}' and '{t1}'")
+    logger.info(f"Pattern T0: {t0_pattern}")
+    logger.info(f"Pattern T1: {t1_pattern}")
     
-    # Walk through all subdirectories
-    for root, _, _ in os.walk(directory):
-        pairs = find_matching_roi_files(root, t0_pattern, t1_pattern)
-        all_pairs.extend(pairs)
+    # Use Pathlib for robust recursive globbing
+    path_dir = Path(directory)
+    t0_files = list(path_dir.glob(t0_pattern))
+    t1_files = list(path_dir.glob(t1_pattern))
     
-    return all_pairs
+    logger.info(f"Found {len(t0_files)} files matching {t0}")
+    logger.info(f"Found {len(t1_files)} files matching {t1}")
+    
+    pairs = []
+    t1_map = {str(f): f for f in t1_files} # Map full path string to Path object for faster lookup
+    
+    for f0_path in t0_files:
+        # Derive expected t1 path by replacing t0 with t1 in the t0 path string
+        # This assumes the only difference in the path affecting the match is t0 vs t1
+        f0_str = str(f0_path)
+        # Need a robust way to replace only the specific timepoint identifier
+        # Regex might be safer if names are complex, but simple replace might work for R_X_tXX_...
+        if t0 not in f0_str:
+            logger.warning(f"Timepoint '{t0}' not found in path '{f0_str}'. Cannot determine matching {t1} file. Skipping.")
+            continue
 
-def batch_process_directory(directory, t0_pattern="*t00*_rois.zip", t1_pattern="*t03*_rois.zip", recursive=True):
+        expected_t1_str = f0_str.replace(t0, t1)
+        
+        if expected_t1_str in t1_map:
+            pairs.append((str(f0_path), expected_t1_str))
+        else:
+            logger.warning(f"Could not find matching {t1} file for {f0_path} (expected path: {expected_t1_str})")
+            
+    logger.info(f"Found {len(pairs)} matching ROI pairs.")
+    return pairs
+
+def batch_process_directory(directory, t0: str, t1: str, recursive=True):
     """
-    Process all matching ROI file pairs in a directory.
+    Find and process all matching ROI pairs in a directory.
     
     Args:
-        directory (str): Directory to process
-        t0_pattern (str): Glob pattern for the first time point
-        t1_pattern (str): Glob pattern for the second time point
-        recursive (bool): Whether to search recursively in subdirectories
-        
-    Returns:
-        int: Number of successfully processed pairs
+        directory (str): Directory to search
+        t0 (str): Identifier for the first timepoint.
+        t1 (str): Identifier for the second timepoint.
+        recursive (bool): Whether to search recursively
     """
-    logger.info(f"Scanning for ROI files in: {directory} (recursive={recursive})")
-    
     if recursive:
-        pairs = find_roi_files_recursive(directory, t0_pattern, t1_pattern)
+        pairs = find_roi_files_recursive(directory, t0, t1)
     else:
-        pairs = find_matching_roi_files(directory, t0_pattern, t1_pattern)
+        logger.error("Non-recursive search is not currently supported. Please use --recursive.")
+        return
     
-    logger.info(f"Found {len(pairs)} ROI file pairs to process")
+    if not pairs:
+        logger.warning(f"No matching ROI pairs found in {directory}")
+        return
     
     successful = 0
     for t0_file, t1_file in pairs:
@@ -347,42 +341,51 @@ def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(description='Match and reorder ImageJ ROI files for cell tracking')
     
-    parser.add_argument('--input', '-i', type=str, help='Input directory containing ROI zip files')
-    parser.add_argument('--t0-pattern', type=str, default="*t00*_rois.zip", help='Glob pattern for first time point ROI files')
-    parser.add_argument('--t1-pattern', type=str, default="*t03*_rois.zip", help='Glob pattern for second time point ROI files')
-    parser.add_argument('--recursive', '-r', action='store_true', help='Search recursively in subdirectories')
-    
-    # For individual file processing
     parser.add_argument('--file1', type=str, help='First ROI zip file (reference)')
     parser.add_argument('--file2', type=str, help='Second ROI zip file (to be reordered)')
+    parser.add_argument('--input', '-i', help='Input directory to search for ROI pairs')
+    parser.add_argument('--recursive', '-r', action='store_true', help='Search directory recursively')
+    parser.add_argument('--timepoints', nargs='+', help='List of exactly two timepoints to process (e.g., t00 t03)')
+    parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose debug logging')
     
     args = parser.parse_args()
     
-    # Process individual files if specified
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.setLevel(logging.DEBUG)
+        logger.info("Verbose logging enabled.")
+    
+    # Mode 1: Process specific pair
     if args.file1 and args.file2:
-        if os.path.exists(args.file1) and os.path.exists(args.file2):
-            success = process_roi_pair(args.file1, args.file2)
-            sys.exit(0 if success else 1)
-        else:
-            logger.error(f"One or both specified files do not exist")
+        if not args.timepoints or len(args.timepoints) != 2:
+            logger.warning("Processing specific files, --timepoints argument ignored/not needed.")
+        success = process_roi_pair(args.file1, args.file2)
+        if not success:
             sys.exit(1)
-    
-    # Process directory
+    # Mode 2: Batch process directory
     elif args.input:
-        if os.path.isdir(args.input):
-            successful = batch_process_directory(
-                args.input, 
-                args.t0_pattern,
-                args.t1_pattern,
-                args.recursive
-            )
-            sys.exit(0 if successful > 0 else 1)
-        else:
-            logger.error(f"Input directory does not exist: {args.input}")
+        if not args.recursive:
+            logger.error("Batch processing currently requires the --recursive flag.")
             sys.exit(1)
-    
+        
+        # Validate timepoints argument for batch mode
+        if not args.timepoints:
+            logger.error("Error: --timepoints argument is required for batch processing mode.")
+            sys.exit(1)
+        elif len(args.timepoints) == 1:
+            logger.warning(f"ROI tracking requires two timepoints. Only one selected: {args.timepoints[0]}. Skipping tracking.")
+            sys.exit(0) # Exit successfully, just skip the step
+        elif len(args.timepoints) != 2:
+            logger.error(f"ROI tracking requires exactly two timepoints. Received {len(args.timepoints)}: {args.timepoints}. Skipping tracking.")
+            sys.exit(1) # Exit with error
+        else:
+            # Proceed with the two selected timepoints
+            t0, t1 = args.timepoints[0], args.timepoints[1]
+            logger.info(f"Starting batch processing for timepoints: {t0} -> {t1}")
+            batch_process_directory(args.input, t0, t1, recursive=True)
     else:
         parser.print_help()
+        logger.error("Please specify either --file1/--file2 or --input directory.")
         sys.exit(1)
 
 if __name__ == "__main__":
