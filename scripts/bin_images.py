@@ -88,7 +88,6 @@ def process_images(input_dir, output_dir, bin_factor=4,
     for file_path in all_files:
         # Convert to Path object for easier manipulation
         file_path = Path(file_path)
-        logger.debug(f"Checking file: {file_path}")
         
         # --- Filter based on selections ---
         try:
@@ -108,7 +107,6 @@ def process_images(input_dir, output_dir, bin_factor=4,
                 continue
                 
             if selected_conditions and current_condition not in selected_conditions:
-                logger.debug(f"Skipping {file_path} (condition mismatch: {current_condition} not in {selected_conditions})")
                 continue
                 
             # Extract region, timepoint, channel from filename
@@ -120,17 +118,13 @@ def process_images(input_dir, output_dir, bin_factor=4,
             current_region = region_match.group(1) if region_match else None
             current_timepoint = timepoint_match.group(1) if timepoint_match else None
             current_channel = channel_match.group(1) if channel_match else None
-            logger.debug(f"  Extracted metadata - Condition: {current_condition}, Region: {current_region}, Timepoint: {current_timepoint}, Channel: {current_channel}")
 
             # Apply filters
             if selected_regions and current_region not in selected_regions:
-                logger.debug(f"Skipping {file_path} (region mismatch: {current_region} not in {selected_regions})")
                 continue
             if selected_timepoints and current_timepoint not in selected_timepoints:
-                logger.debug(f"Skipping {file_path} (timepoint mismatch: {current_timepoint} not in {selected_timepoints})")
                 continue
             if selected_channels and current_channel not in selected_channels:
-                logger.debug(f"Skipping {file_path} (channel mismatch: {current_channel} not in {selected_channels})")
                 continue
                 
         except Exception as e:
