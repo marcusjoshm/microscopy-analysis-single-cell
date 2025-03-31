@@ -368,6 +368,15 @@ class WorkflowOrchestrator:
         """
         logger.info(f"Manual step required: {step_name}")
         
+        # Replace placeholders in instructions
+        instructions = instructions.replace('{input_dir}', str(self.input_dir)) \
+                               .replace('{output_dir}', str(self.output_dir)) \
+                               .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
+        
+        # Replace timepoints and regions lists
+        instructions = instructions.replace('{timepoints_list}', ', '.join(self.experiment_metadata['timepoints']))
+        instructions = instructions.replace('{regions_list}', ', '.join(self.experiment_metadata['regions']))
+        
         print("\n" + "="*80)
         print(f"MANUAL STEP REQUIRED: {step_name}")
         print("="*80)
@@ -416,7 +425,8 @@ class WorkflowOrchestrator:
                 for arg in args:
                     # Base replacements
                     arg = arg.replace('{input_dir}', str(self.input_dir)) \
-                             .replace('{output_dir}', str(self.output_dir))
+                             .replace('{output_dir}', str(self.output_dir)) \
+                             .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
                     
                     # Replace region and timepoint placeholders if specific ones are selected
                     if '{regions}' in arg and self.regions:
@@ -433,7 +443,8 @@ class WorkflowOrchestrator:
                 args = processed_args
             elif isinstance(args, str):
                 args = args.replace('{input_dir}', str(self.input_dir)) \
-                           .replace('{output_dir}', str(self.output_dir))
+                           .replace('{output_dir}', str(self.output_dir)) \
+                           .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
                 
                 # Replace region and timepoint placeholders if specific ones are selected
                 if '{regions}' in args and self.regions:
@@ -481,7 +492,8 @@ class WorkflowOrchestrator:
                         for key, value in function_args.items():
                             if isinstance(value, str):
                                 function_args[key] = value.replace('{input_dir}', str(self.input_dir)) \
-                                                         .replace('{output_dir}', str(self.output_dir))
+                                                         .replace('{output_dir}', str(self.output_dir)) \
+                                                         .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
                         
                         # Call the function
                         result = getattr(self, function_name)(**function_args)
