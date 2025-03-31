@@ -27,6 +27,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CellAnalysis")
 
+# Map timepoint (t00, t03, etc.) to timepoint label (t00, t03, etc.)
+TIME_MAPPING = {
+    't00': 't00',  # t00
+    't03': 't03',  # t03
+    't06': 't06'   # t06
+}
+
+# Time translation for imaging log file
+TIMEPOINT_TO_MINUTES = {
+    't00': '45',  # t00
+    't03': '60',  # t03
+    't06': '75'   # t06
+}
+
 def create_analyze_particles_macro(mask_paths, csv_file):
     """
     Create an ImageJ macro that uses Analyze Particles to process specific mask files
@@ -187,49 +201,99 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
     # Group mask files by their parent directory
     mask_files_by_dir = {}
     
+    # Convert input timepoints to list if needed
+    target_timepoints = []
+    if timepoints:
+        # Handle both string and list inputs
+        if isinstance(timepoints, str):
+            # Split by whitespace and strip each item
+            target_timepoints = [tp.strip() for tp in timepoints.split()]
+        elif isinstance(timepoints, list):
+            # If it's a list with space-separated items, split each item
+            temp_timepoints = []
+            for tp in timepoints:
+                if isinstance(tp, str) and ' ' in tp:
+                    temp_timepoints.extend([t.strip() for t in tp.split()])
+                else:
+                    temp_timepoints.append(tp)
+            target_timepoints = temp_timepoints
+    
+    # Handle regions input
+    target_regions = []
+    if regions:
+        # Similar handling for regions
+        if isinstance(regions, str):
+            target_regions = [r.strip() for r in regions.split()]
+        elif isinstance(regions, list):
+            temp_regions = []
+            for r in regions:
+                if isinstance(r, str) and ' ' in r:
+                    temp_regions.extend([reg.strip() for reg in r.split()])
+                else:
+                    temp_regions.append(r)
+            target_regions = temp_regions
+    
+    logger.info(f"Looking for mask files in: {input_dir}")
+    logger.info(f"Filtering by regions: {target_regions}")
+    logger.info(f"Filtering by timepoints: {target_timepoints}")
+    
+    # Count files for debugging
+    all_mask_files = []
+    matched_directories = []
+    
     # Search for .tif and .tiff files
     for extension in ["tif", "tiff"]:
-        pattern = os.path.join(input_dir, "**", f"MASK*.{extension}")
+        pattern = os.path.join(input_dir, "**", f"MASK_CELL*.{extension}")
+        logger.info(f"Searching with pattern: {pattern}")
+        
         for mask_path in glob.glob(pattern, recursive=True):
+            all_mask_files.append(mask_path)
             # Get the parent directory (usually contains the condition/region info)
             parent_dir = os.path.dirname(mask_path)
             
-            # Filter by regions if specified
-            if regions:
-                region_match = False
-                for region in regions:
-                    if region in parent_dir:
-                        region_match = True
-                        break
-                if not region_match:
+            # Extract region and timepoint from the directory name
+            dir_name = os.path.basename(parent_dir)
+            logger.info(f"Processing directory: {dir_name}")
+            
+            # Match the new pattern: R_X_tXX
+            region_match = re.match(r"(R_\d+)_(t\d+)", dir_name)
+            
+            if region_match:
+                region = region_match.group(1)
+                timepoint = region_match.group(2)
+                logger.info(f"  Matched region: {region}, timepoint: {timepoint}")
+                
+                # Filter by regions if specified
+                if target_regions and region not in target_regions:
+                    logger.info(f"  Skipping due to region filter")
                     continue
-            
-            # Filter by timepoints if specified
-            if timepoints:
-                timepoint_match = False
-                for timepoint in timepoints:
-                    if timepoint in parent_dir:
-                        timepoint_match = True
-                        break
-                if not timepoint_match:
+                    
+                # Filter by timepoints if specified
+                if target_timepoints and timepoint not in target_timepoints:
+                    logger.info(f"  Skipping due to timepoint filter")
                     continue
-            
-            # Add to the appropriate group
-            if parent_dir not in mask_files_by_dir:
-                mask_files_by_dir[parent_dir] = []
-            
-            mask_files_by_dir[parent_dir].append(mask_path)
+                
+                matched_directories.append(parent_dir)
+                logger.info(f"  Adding mask file: {mask_path}")
+                
+                # Add the file to the appropriate directory group
+                if parent_dir not in mask_files_by_dir:
+                    mask_files_by_dir[parent_dir] = []
+                mask_files_by_dir[parent_dir].append(mask_path)
+            else:
+                logger.info(f"  No region/timepoint match for directory: {dir_name}")
+    
+    # Log debugging information
+    logger.info(f"Found {len(all_mask_files)} total mask files in input directory")
+    logger.info(f"Matched {len(matched_directories)} directories")
     
     # Log the results
     total_files = sum(len(files) for files in mask_files_by_dir.values())
     logger.info(f"Found {total_files} mask files in {len(mask_files_by_dir)} directories")
     
-    # Limit the number of files per directory if needed
-    if max_files > 0:
-        for dir_path, file_list in mask_files_by_dir.items():
-            if len(file_list) > max_files:
-                logger.info(f"Limiting directory {dir_path} to {max_files} files for processing")
-                mask_files_by_dir[dir_path] = file_list[:max_files]
+    if total_files == 0:
+        logger.error(f"No mask files found in {input_dir}")
+        return {}
     
     return mask_files_by_dir
 
