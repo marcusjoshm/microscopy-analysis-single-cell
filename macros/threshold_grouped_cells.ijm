@@ -105,16 +105,8 @@ for (d = 0; d < dishDirs.length; d++) {
                     }
                 }
                 
-                // Apply Otsu thresholding to the selected region
-                setAutoThreshold("Otsu dark 16-bit no-reset");
-                
-                // Get the threshold levels determined by Otsu
-                getThreshold(lower, upper);
-                print("Otsu threshold values - Lower: " + lower + ", Upper: " + upper);
-                
-                // Select the entire image and apply the same threshold
-                run("Select All");
-                setThreshold(lower, upper);
+                // Apply Otsu thresholding directly
+                setAutoThreshold("Otsu dark 16-bit");
                 
                 // Convert to mask
                 setOption("BlackBackground", true);
