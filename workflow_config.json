@@ -71,14 +71,14 @@
       "name": "resize_rois",
       "type": "python",
       "path": "scripts/resize_rois.py",
-      "args": ["--input", "{output_dir}/preprocessed", "--output", "{output_dir}/ROIs", "--imagej", "{imagej_path}"],
+      "args": ["--input", "{output_dir}/preprocessed", "--output", "{output_dir}/ROIs", "--imagej", "{imagej_path}", "--auto-close"],
       "description": "Resize ROIs from binned images to match original image dimensions"
     },
     {
       "name": "extract_cells",
       "type": "python",
       "path": "scripts/extract_cells.py",
-      "args": ["--roi-dir", "{output_dir}/ROIs", "--raw-data-dir", "{output_dir}/raw_data", "--output-dir", "{output_dir}/cells", "--imagej", "{imagej_path}"],
+      "args": ["--roi-dir", "{output_dir}/ROIs", "--raw-data-dir", "{output_dir}/raw_data", "--output-dir", "{output_dir}/cells", "--imagej", "{imagej_path}", "--auto-close"],
       "description": "Extract individual cells using ROIs and save as separate files"
     },
     {
@@ -106,7 +106,7 @@
       "name": "create_cell_masks",
       "type": "python",
       "path": "scripts/create_cell_masks.py",
-      "args": ["--roi-dir", "{output_dir}/ROIs", "--mask-dir", "{output_dir}/combined_masks", "--output-dir", "{output_dir}/masks", "--imagej", "{imagej_path}"],
+      "args": ["--roi-dir", "{output_dir}/ROIs", "--mask-dir", "{output_dir}/combined_masks", "--output-dir", "{output_dir}/masks", "--imagej", "{imagej_path}", "--auto-close"],
       "description": "Create individual cell masks by applying ROIs to combined masks"
     },
     {

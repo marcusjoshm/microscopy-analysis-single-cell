@@ -24,13 +24,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ROIResizer")
 
-def create_macro_file(input_dir, output_dir):
+def create_macro_file(input_dir, output_dir, auto_close=False):
     """
     Create an ImageJ macro file for ROI resizing.
     
     Args:
         input_dir (str): Input directory containing binned images and ROIs
         output_dir (str): Output directory for resized ROIs
+        auto_close (bool): Whether to add a line to close ImageJ when the macro completes
         
     Returns:
         str: Path to the created macro file
@@ -192,6 +193,10 @@ print("Completed processing " + num_processed + " ROI files");
 print("Resized ROIs saved to " + output_dir);
     """
     
+    # Add auto-close line if requested
+    if auto_close:
+        macro_content += '\n// Close ImageJ when done\neval("script", "System.exit(0);");\n'
+    
     # Write the macro content to the file
     with open(macro_file, 'w') as f:
         f.write(macro_content)
@@ -199,13 +204,14 @@ print("Resized ROIs saved to " + output_dir);
     logger.info(f"Created macro file: {macro_file}")
     return str(macro_file)
 
-def run_imagej_macro(imagej_path, macro_file, *args):
+def run_imagej_macro(imagej_path, macro_file, auto_close=False, *args):
     """
     Run ImageJ with a given macro and arguments.
     
     Args:
         imagej_path (str): Path to the ImageJ executable
         macro_file (str): Path to the ImageJ macro file
+        auto_close (bool): Whether the macro will automatically close ImageJ
         *args: Additional arguments to pass to the macro
         
     Returns:
@@ -217,6 +223,7 @@ def run_imagej_macro(imagej_path, macro_file, *args):
             cmd.append(','.join(args))
         
         logger.info(f"Running ImageJ command: {cmd}")
+        logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
         
         result = subprocess.run(
             cmd,
@@ -252,6 +259,8 @@ def main():
                         help='Output directory for resized ROIs')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--auto-close', action='store_true',
+                        help='Close ImageJ when the macro completes')
     
     args = parser.parse_args()
     
@@ -259,10 +268,10 @@ def main():
     os.makedirs(args.output, exist_ok=True)
     
     # Create the ImageJ macro
-    macro_file = create_macro_file(args.input, args.output)
+    macro_file = create_macro_file(args.input, args.output, args.auto_close)
     
     # Run the ImageJ macro
-    success = run_imagej_macro(args.imagej, macro_file)
+    success = run_imagej_macro(args.imagej, macro_file, args.auto_close)
     
     if success:
         logger.info("ROI resizing completed successfully")

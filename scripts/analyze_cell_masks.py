@@ -338,50 +338,47 @@ def generate_csv_filename(directory_path, output_dir):
 
 def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path):
     """
-    Process all mask files in a directory.
+    Process a directory of mask files.
     
     Args:
-        dir_path (str): Directory path containing the mask files
-        mask_paths (list): List of mask file paths in the directory
-        output_dir (str): Output directory for analysis results
+        dir_path (str): Path to the directory
+        mask_paths (list): List of mask file paths to process
+        output_dir (str): Output directory for results
         imagej_path (str): Path to the ImageJ executable
         
     Returns:
         bool: True if successful, False otherwise
     """
-    # Generate CSV filename based on the directory structure
+    # Generate an output CSV filename for the directory
     csv_file = generate_csv_filename(dir_path, output_dir)
     
-    logger.info(f"Processing {len(mask_paths)} files from {dir_path}")
-    logger.info(f"Output will be saved to {csv_file}")
-    
-    # Create the ImageJ macro for this directory
+    # Create a macro for this batch of files
     macro_file = create_analyze_particles_macro(mask_paths, csv_file)
     
-    # Run the ImageJ macro
+    # Run the macro with ImageJ
     success = run_imagej_macro(imagej_path, macro_file)
     
-    if success and os.path.exists(csv_file):
-        logger.info(f"Successfully created: {csv_file}")
-        return True
+    if success:
+        logger.info(f"Successfully analyzed {len(mask_paths)} mask files in {dir_path}")
     else:
-        logger.error(f"Failed to create: {csv_file}")
-        return False
+        logger.error(f"Failed to analyze mask files in {dir_path}")
+    
+    return success
 
 def main():
-    """Main function to analyze cell masks with ImageJ."""
+    """Main function to analyze cell masks."""
     parser = argparse.ArgumentParser(description='Analyze cell masks using ImageJ')
     
     parser.add_argument('--input', '-i', required=True,
-                        help='Input directory containing mask files')
+                        help='Directory containing mask files')
     parser.add_argument('--output', '-o', required=True,
-                        help='Output directory for analysis results')
-    parser.add_argument('--regions', '-r', nargs='+', default=[],
-                        help='Specific regions to analyze (e.g., R_1 R_2 R_3)')
-    parser.add_argument('--timepoints', '-t', nargs='+', default=[],
-                        help='Specific timepoints to analyze (e.g., t00 t03)')
+                        help='Directory for output analysis files')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--regions', nargs='+',
+                        help='Specific regions to process (e.g., R_1 R_2)')
+    parser.add_argument('--timepoints', '-t', nargs='+',
+                        help='Specific timepoints to process (e.g., t00 t03)')
     parser.add_argument('--max-files', type=int, default=50,
                         help='Maximum number of files to process per directory')
     
@@ -407,7 +404,8 @@ def main():
     total_dirs = len(mask_files_by_dir)
     
     for dir_path, mask_paths in mask_files_by_dir.items():
-        if process_mask_directory(dir_path, mask_paths, args.output, args.imagej):
+        success = process_mask_directory(dir_path, mask_paths, args.output, args.imagej)
+        if success:
             success_count += 1
     
     # Report overall results

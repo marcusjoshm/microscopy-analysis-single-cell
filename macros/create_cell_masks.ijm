@@ -19,9 +19,9 @@ function endsWith(str, suffix) {
 setBatchMode(true);
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-03-29_analysis/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-03-29_analysis/combined_masks/";
-outputParent = "/Volumes/NX-01-A/2025-03-29_analysis/masks/";
+roiParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/combined_masks/";
+outputParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/masks/";
 
 // Get list of dish directories in the ROIs parent folder.
 dishes = getFileList(roiParent);
@@ -146,3 +146,6 @@ for (d = 0; d < dishes.length; d++) {
 // Exit batch mode
 setBatchMode(false);
 print("Cell mask creation complete!");
+
+// Close ImageJ when done
+eval("script", "System.exit(0);");
