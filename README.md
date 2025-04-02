@@ -32,7 +32,7 @@ This project provides an end-to-end pipeline for analyzing single-cell microscop
    ```
 3. Install required packages:
    ```
-   pip install numpy scipy pandas matplotlib scikit-image opencv-python tqdm
+   pip install numpy scipy pandas matplotlib scikit-image opencv-python tqdm scikit-learn read-roi
    ```
 
 ### Cellpose Installation and Setup
