@@ -33,7 +33,8 @@ class WorkflowOrchestrator:
                  datatype: Optional[str] = None, 
                  conditions: Optional[List[str]] = None, 
                  channels: Optional[List[str]] = None, 
-                 timepoints=None, regions=None, setup_only=False):
+                 timepoints=None, regions=None, setup_only=False,
+                 start_from: Optional[str] = None):
         """
         Initialize the workflow orchestrator.
         
@@ -48,6 +49,7 @@ class WorkflowOrchestrator:
             timepoints (list): List of timepoints to analyze (e.g., ["t00", "t03"]).
             regions (list): List of regions to analyze (e.g., ["R_1", "R_2", "R_3"]).
             setup_only (bool): Flag to indicate if only directory setup should be performed.
+            start_from (str): Step name to start the workflow from (optional).
         """
         self.config_path = config_path
         self.input_dir = Path(input_dir).resolve()
@@ -59,6 +61,7 @@ class WorkflowOrchestrator:
         self.timepoints = timepoints or []
         self.regions = regions or []
         self.setup_only = setup_only
+        self.start_from = start_from
         
         # --- BEGIN DEBUG LOG ---
         logger.debug(f"__init__: self.selected_conditions = {self.selected_conditions}")
@@ -554,11 +557,34 @@ class WorkflowOrchestrator:
         logger.info(f"  All available channels: {', '.join(self.experiment_metadata['channels'])}")
         logger.info(f"  Inferred data type: {self.experiment_metadata['datatype_inferred']}")
         
+        # Determine the start index if --start-from is provided
+        start_index = 0
+        if self.start_from:
+            found_start = False
+            for idx, step_cfg in enumerate(steps):
+                if step_cfg.get('name') == self.start_from:
+                    start_index = idx
+                    found_start = True
+                    logger.info(f"Starting workflow from step {start_index + 1}: {self.start_from}")
+                    break
+            if not found_start:
+                logger.error(f"Start step '{self.start_from}' not found in workflow configuration.")
+                return False # Or raise an error
+
         for i, step in enumerate(steps):
             step_name = step.get('name', f"Step {i+1}")
             step_type = step.get('type')
             script_path = step.get('path')
             args = step.get('args', [])
+            
+            # Skip steps before the start_index if --start-from was used
+            if self.start_from and i < start_index:
+                logger.info(f"Skipping step {i+1}/{total_steps}: {step_name} (due to --start-from {self.start_from})")
+                # Add to skipped steps, potentially overwrite if also in --skip list
+                if step_name not in self.workflow_state['steps_skipped']:
+                     self.workflow_state['steps_skipped'].append(step_name)
+                self._save_state()
+                continue
             
             # Skip this step if it's in the skip list
             if step_name in self.skip_steps:
@@ -724,6 +750,8 @@ def main():
                         help='Specific regions to analyze (e.g., R_1 R_2 R_3)')
     parser.add_argument('--setup-only', action='store_true',
                         help='Only set up directory structure, do not run the workflow')
+    parser.add_argument('--start-from', type=str, default=None,
+                        help='Name of the step to start the workflow from, skipping all previous steps.')
     
     args = parser.parse_args()
     
@@ -738,7 +766,8 @@ def main():
         channels=args.channels,
         timepoints=args.timepoints,
         regions=args.regions,
-        setup_only=args.setup_only
+        setup_only=args.setup_only,
+        start_from=args.start_from
     )
     
     # Set up directory structure (this replaces your analysis_setup.sh)
