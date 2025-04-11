@@ -183,17 +183,12 @@ for (i = 0; i < numToOpen; i++) {
 // If user wants more bins, create flag file and exit
 if (userDecision == "Need more bins for better separation") {
     File.saveString("User requested more bins for better cell grouping", flagFile);
-    showMessage("More Bins Requested", 
-        "Your request for more bins has been recorded.\n" +
-        "The workflow will restart the cell grouping step with more bins.\n" +
-        "You can now close ImageJ.");
+    showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
     eval("script", "System.exit(0);");
 }
 
 // If we're here, user wants to proceed with thresholding
-showMessage("Proceeding with Thresholding", 
-    "The current grouping is acceptable.\n" +
-    "We will now begin thresholding these images.");
+showMessage("Proceeding with Thresholding", "The current grouping is acceptable. We will now begin thresholding these images.");
 
 // Process each image for thresholding
 for (d = 0; d < dishDirs.length; d++) {
