@@ -165,11 +165,10 @@ for (i = 0; i < numToOpen; i++) {
 // Ask user to evaluate if the current grouping is sufficient
 // Show dialog with image summary
 Dialog.create("Evaluate Cell Grouping");
-Dialog.addMessage("Please review the opened images to evaluate if the current cell grouping is sufficient.\n" + 
-                 numToOpen + " of " + allImagePaths.length + " images shown. " +
-                 "More images are available in the source directory.");
-Dialog.addMessage("Do you want to proceed with thresholding these grouped cells,\n" +
-                 "or would you like to go back and create more bins for better separation?");
+Dialog.addMessage("Please review the opened images to evaluate if the current cell grouping is sufficient.");
+Dialog.addMessage("Showing " + numToOpen + " of " + allImagePaths.length + " images.");
+Dialog.addMessage("Do you want to proceed with thresholding these grouped cells,");
+Dialog.addMessage("or would you like to go back and create more bins for better separation?");
 Dialog.addChoice("Decision:", newArray("Proceed with thresholding", "Need more bins for better separation"));
 Dialog.show();
 
