@@ -44,7 +44,8 @@ def create_macro_file(input_dir, output_dir, auto_close=False):
     # Define the flag file path that will be created if user requests more bins
     flag_file = Path(output_dir) / "NEED_MORE_BINS.flag"
     
-    # Generate the macro content
+    # Generate the macro content without using % formatting for the entire string
+    # Instead, we'll do the replacements explicitly to avoid formatting issues
     macro_content = """
 // Helper function to join array elements with a separator.
 function joinArray(arr, separator) {
@@ -58,9 +59,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "%s/";
-outputDir = "%s/";
-flagFile = "%s";
+cellsDir = "__INPUT_DIR__/";
+outputDir = "__OUTPUT_DIR__/";
+flagFile = "__FLAG_FILE__";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -310,7 +311,12 @@ for (d = 0; d < dishDirs.length; d++) {
 }
 
 print("Thresholding of grouped cells completed.");
-""" % (input_dir, output_dir, flag_file)
+"""
+
+    # Replace placeholder values with actual values
+    macro_content = macro_content.replace("__INPUT_DIR__", input_dir)
+    macro_content = macro_content.replace("__OUTPUT_DIR__", output_dir)
+    macro_content = macro_content.replace("__FLAG_FILE__", str(flag_file))
     
     # Add auto-close line if requested
     if auto_close:
