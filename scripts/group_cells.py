@@ -445,7 +445,8 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
         norm_img = cv2.normalize(sum_img, None, 0, 65535, cv2.NORM_MINMAX)
         norm_img = norm_img.astype(np.uint16)
         
-        output_file = output_subdir / f"{cell_dir.name}_bin_{i+1}_n{cell_counts[i]}.tif"
+        # Remove the cell count from the filename to ensure files get overwritten when rerunning with more bins
+        output_file = output_subdir / f"{cell_dir.name}_bin_{i+1}.tif"
         cv2.imwrite(str(output_file), norm_img)
         logger.info(f"Saved summed image for group {i+1} with {cell_counts[i]} cells: {output_file}")
     
