@@ -174,11 +174,8 @@ Dialog.show();
 
 userDecision = Dialog.getChoice();
 
-// Close preview windows
-for (i = 0; i < numToOpen; i++) {
-    selectWindow(previewWindows[i]);
-    close();
-}
+// Close all preview windows at once
+run("Close All");
 
 // If user wants more bins, create flag file and exit
 if (userDecision == "Need more bins for better separation") {
