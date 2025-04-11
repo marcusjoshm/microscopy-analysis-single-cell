@@ -233,6 +233,24 @@ python single_cell_workflow.py --config workflow_config.json --input /path/to/in
 
 By default, this will process all conditions, regions, channels, and timepoints found in the input data.
 
+### Input Directory Structure
+
+The workflow now automatically prepares and standardizes your input directory structure. It handles three common organizational patterns from LASX exports:
+
+1. **Flat structure**: .tif files directly in the input directory
+   - Creates `condition_1/timepoint_1/` structure
+   - Moves all .tif files into the timepoint directory
+
+2. **One-level structure**: Subdirectories containing .tif files 
+   - Treats each subdirectory as a condition
+   - Creates `timepoint_1/` under each condition
+   - Moves .tif files into appropriate timepoint directories
+
+3. **Two-level structure**: Conditions with timepoint subdirectories containing .tif files
+   - Already properly formatted, no changes needed
+
+This automatic preparation happens as the first step in the workflow, before any data selection or processing occurs.
+
 ### Optional Arguments
 
 - `--skip`: Skip specific steps by name (e.g., `--skip interactive_segmentation`).
@@ -328,6 +346,16 @@ Example: `Dish_1_Control/Some_Subfolder/R_1_Merged_t00_ch01.tif`
 
 ## Recent Updates
 
+- **Automatic Input Structure Preparation:** Added preprocessing step to standardize data directories:
+  - Automatically detects and handles three common input structure patterns from LASX exports
+  - Removes unnecessary MetaData directories
+  - Creates proper condition/timepoint directory hierarchy for any input organization
+  - Runs before any other workflow steps to ensure compatibility
+- **Improved Directory Setup Workflow:** Reorganized the workflow sequence:
+  - First creates base directories regardless of selections
+  - Performs datatype, condition, channel, timepoint, and region selections in sequence
+  - Creates subdirectories based on selections after all choices are made
+  - Better handles any directory structure without requiring "Dish_" naming convention
 - **Adaptive Cell Grouping:** Added interactive capability to increase the number of cell groups during thresholding:
   - Users can now request more bins for better separation when viewing grouped cell images
   - The workflow will automatically restart the cell grouping step with an increased bin count

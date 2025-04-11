@@ -5,6 +5,13 @@
   "imagej_path": "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
   "steps": [
     {
+      "name": "prepare_input_structure",
+      "type": "bash",
+      "path": "scripts/prepare_input_structure.sh",
+      "args": ["{input_dir}"],
+      "description": "Standardize input directory structure for LASX-exported data"
+    },
+    {
       "name": "select_datatype",
       "type": "manual",
       "instructions": "Select the type of data: single_timepoint or multi_timepoint. You can specify the datatype when running the script with the --datatype option.",
