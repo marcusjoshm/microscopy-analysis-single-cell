@@ -41,6 +41,9 @@ def create_macro_file(input_dir, output_dir, auto_close=False):
     # Ensure the directory exists
     macro_file.parent.mkdir(parents=True, exist_ok=True)
     
+    # Define the flag file path that will be created if user requests more bins
+    flag_file = Path(output_dir) / "NEED_MORE_BINS.flag"
+    
     # Generate the macro content
     macro_content = """
 // Helper function to join array elements with a separator.
@@ -57,6 +60,8 @@ function joinArray(arr, separator) {
 // ----- CONFIGURATION -----
 cellsDir = "%s/";
 outputDir = "%s/";
+flagFile = "%s";
+needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
 
@@ -67,6 +72,20 @@ if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 // Get list of dish directories in cellsDir.
 dishDirs = getFileList(cellsDir);
 print("Found dish directories: " + joinArray(dishDirs, ", "));
+
+// Ask user at the beginning about creating more bins
+Dialog.create("Cell Group Detection");
+Dialog.addMessage("If you need more bins for better cell grouping, you can select that option here\\nor continue with the current number of bins.");
+Dialog.addChoice("Action:", newArray("Continue with current bins", "Add more bins"));
+Dialog.show();
+
+userChoice = Dialog.getChoice();
+if (userChoice == "Add more bins") {
+    needMoreBinsFlag = true;
+    File.saveString("User requested more bins for better cell grouping", flagFile);
+    showMessage("More Bins Requested", "Your request for more bins has been recorded.\\nThe workflow will restart the cell grouping step with more bins.\\nYou can now close ImageJ.");
+    eval("script", "System.exit(0);");
+}
 
 for (d = 0; d < dishDirs.length; d++) {
     dishName = dishDirs[d];
@@ -149,6 +168,20 @@ for (d = 0; d < dishDirs.length; d++) {
                     }
                 }
                 
+                // After viewing the current image, give user another chance to request more bins
+                Dialog.create("Cell Group Assessment");
+                Dialog.addMessage("After viewing this image, do you think you need more bins?");
+                Dialog.addChoice("Action:", newArray("Continue with current bins", "Add more bins"));
+                Dialog.show();
+                
+                userChoice = Dialog.getChoice();
+                if (userChoice == "Add more bins") {
+                    needMoreBinsFlag = true;
+                    File.saveString("User requested more bins for better cell grouping", flagFile);
+                    showMessage("More Bins Requested", "Your request for more bins has been recorded.\\nThe workflow will restart the cell grouping step with more bins.\\nYou can now close ImageJ.");
+                    eval("script", "System.exit(0);");
+                }
+                
                 // Apply Otsu thresholding directly
                 setAutoThreshold("Otsu dark 16-bit");
                 
@@ -175,8 +208,22 @@ for (d = 0; d < dishDirs.length; d++) {
     }
 }
 
+// Final check after all images have been processed
+if (!needMoreBinsFlag) {
+    Dialog.create("Confirm Cell Grouping");
+    Dialog.addMessage("All images have been processed. Are you satisfied with the current grouping,\\nor would you like to try with more bins?");
+    Dialog.addChoice("Final Decision:", newArray("Grouping is sufficient", "Need more bins"));
+    Dialog.show();
+    
+    finalChoice = Dialog.getChoice();
+    if (finalChoice == "Need more bins") {
+        File.saveString("User requested more bins for better cell grouping", flagFile);
+        showMessage("More Bins Requested", "Your request for more bins has been recorded.\\nThe workflow will restart the cell grouping step with more bins.");
+    }
+}
+
 print("Thresholding of grouped cells completed.");
-""" % (input_dir, output_dir)
+""" % (input_dir, output_dir, flag_file)
     
     # Add auto-close line if requested
     if auto_close:
@@ -187,19 +234,20 @@ print("Thresholding of grouped cells completed.");
         f.write(macro_content)
     
     logger.info(f"Created macro file: {macro_file}")
-    return str(macro_file)
+    return str(macro_file), str(flag_file)
 
-def run_imagej_macro(imagej_path, macro_file, auto_close=False):
+def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
     """
     Run ImageJ with a given macro file.
     
     Args:
         imagej_path (str): Path to the ImageJ executable
         macro_file (str): Path to the ImageJ macro file
+        flag_file (str): Path to the flag file that indicates need for more bins
         auto_close (bool): Whether the macro will automatically close ImageJ
         
     Returns:
-        bool: True if successful, False otherwise
+        tuple: (bool, bool) - (success, needs_more_bins)
     """
     try:
         cmd = [imagej_path, '-macro', macro_file]
@@ -221,15 +269,27 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False):
         if result.stderr:
             logger.warning(f"ImageJ errors: {result.stderr}")
         
+        # Check for the flag file
+        needs_more_bins = os.path.exists(flag_file)
+        if needs_more_bins:
+            logger.info(f"Flag file detected: {flag_file}")
+            logger.info("User has requested more bins for better cell grouping")
+            # Remove the flag file to avoid confusion on subsequent runs
+            try:
+                os.remove(flag_file)
+                logger.info(f"Removed flag file after detection")
+            except Exception as e:
+                logger.warning(f"Could not remove flag file: {e}")
+        
         # Check if the command executed successfully
         if result.returncode != 0:
             logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
-            return False
+            return False, needs_more_bins
         
-        return True
+        return True, needs_more_bins
     except Exception as e:
         logger.error(f"Error running ImageJ: {e}")
-        return False
+        return False, False
 
 def main():
     """Main function to threshold grouped cell images."""
@@ -250,13 +310,20 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Create the ImageJ macro
-    macro_file = create_macro_file(args.input_dir, args.output_dir, args.auto_close)
+    macro_file, flag_file = create_macro_file(args.input_dir, args.output_dir, args.auto_close)
     
     # Run the ImageJ macro
-    success = run_imagej_macro(args.imagej, macro_file, args.auto_close)
+    success, needs_more_bins = run_imagej_macro(args.imagej, macro_file, flag_file, args.auto_close)
     
     if success:
         logger.info("Thresholding of grouped cells completed successfully")
+        
+        # If the user requested more bins, signal this to the workflow
+        if needs_more_bins:
+            logger.info("User requested more bins for better cell grouping")
+            # Exit with a special code (5) to signal the workflow that more bins are needed
+            return 5
+        
         return 0
     else:
         logger.error("Thresholding of grouped cells failed")

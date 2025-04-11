@@ -281,6 +281,23 @@ Run the workflow normally. The `roi_tracking` step (designed for multi-timepoint
 python single_cell_workflow.py --config workflow_config.json --input /path/to/input --output /path/to/output --skip roi_tracking
 ```
 
+### Adaptive Cell Grouping
+
+The workflow now supports adaptive cell grouping, which allows you to interactively increase the number of groups if you find that the current grouping doesn't properly separate cell populations with different expression levels.
+
+During the `threshold_grouped_cells` step, you'll be presented with a dialog asking if you want to add more bins. If you choose "Add more bins":
+
+1. The workflow will increment the bin count by 1
+2. Automatically restart from the `group_cells` step with the new bin count
+3. Reprocess the cell grouping and continue with the workflow
+
+This adaptive approach is particularly useful when:
+- You're unsure how many bins to use initially
+- The cell population has subtle expression level differences that may require fine-tuning
+- You discover during visualization that the current grouping is insufficient
+
+You can repeat this process multiple times if needed, incrementally adding bins until you achieve optimal separation.
+
 ### Configuration
 
 The workflow is configured through a JSON file (`workflow_config.json`). You can customize:
@@ -311,6 +328,10 @@ Example: `Dish_1_Control/Some_Subfolder/R_1_Merged_t00_ch01.tif`
 
 ## Recent Updates
 
+- **Adaptive Cell Grouping:** Added interactive capability to increase the number of cell groups during thresholding:
+  - Users can now request more bins for better separation when viewing grouped cell images
+  - The workflow will automatically restart the cell grouping step with an increased bin count
+  - This feature helps to iteratively refine cell grouping without manually restarting the workflow
 - **Improved Cell Grouping:** Enhanced cell grouping algorithm to better handle varying intensity distributions:
   - Added log transformation for wide dynamic ranges
   - Implemented K-means fallback when GMM clustering struggles

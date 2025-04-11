@@ -283,7 +283,8 @@ class WorkflowOrchestrator:
             args (list): List of arguments to pass to the script.
         
         Returns:
-            bool: True if successful, False otherwise.
+            tuple: (bool, dict) - (success, result_data)
+            where result_data may contain additional information like 'needs_more_bins'
         """
         args = args or []
         command = [sys.executable, script_path] + args
@@ -294,15 +295,26 @@ class WorkflowOrchestrator:
             # Run without capturing stdout/stderr
             process = subprocess.run(
                 command,
-                check=True,
+                check=False,  # Don't raise exception so we can handle special exit codes
                 text=True,
                 encoding='utf-8'
             )
-            logger.info(f"Python script completed successfully: {script_path}")
-            return True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Python script {script_path} failed with exit code {e.returncode}")
-            return False
+            
+            # Check for special exit codes
+            if process.returncode == 5:  # Special exit code for "need more bins"
+                logger.info(f"Python script {script_path} indicated need for more bins with exit code 5")
+                return True, {'needs_more_bins': True}
+            
+            # Handle normal exit codes
+            if process.returncode == 0:
+                logger.info(f"Python script completed successfully: {script_path}")
+                return True, {}
+            else:
+                logger.error(f"Python script {script_path} failed with exit code {process.returncode}")
+                return False, {}
+        except Exception as e:
+            logger.error(f"Error executing Python script {script_path}: {e}")
+            return False, {}
     
     def run_imagej_macro(self, macro_path, args=None):
         """
@@ -576,26 +588,23 @@ class WorkflowOrchestrator:
                 logger.error(f"Start step '{self.start_from}' not found in workflow configuration.")
                 return False # Or raise an error
 
-        for i, step in enumerate(steps):
+        # Keep track of step indices for later reference
+        step_name_to_index = {step.get('name'): i for i, step in enumerate(steps)}
+
+        i = start_index
+        while i < len(steps):
+            step = steps[i]
             step_name = step.get('name', f"Step {i+1}")
             step_type = step.get('type')
             script_path = step.get('path')
             args = step.get('args', [])
-            
-            # Skip steps before the start_index if --start-from was used
-            if self.start_from and i < start_index:
-                logger.info(f"Skipping step {i+1}/{total_steps}: {step_name} (due to --start-from {self.start_from})")
-                # Add to skipped steps, potentially overwrite if also in --skip list
-                if step_name not in self.workflow_state['steps_skipped']:
-                     self.workflow_state['steps_skipped'].append(step_name)
-                self._save_state()
-                continue
             
             # Skip this step if it's in the skip list
             if step_name in self.skip_steps:
                 logger.info(f"Skipping step {i+1}/{total_steps}: {step_name}")
                 self.workflow_state['steps_skipped'].append(step_name)
                 self._save_state()
+                i += 1
                 continue
             
             # Update arguments for group_cells step to use the specified bins
@@ -690,10 +699,12 @@ class WorkflowOrchestrator:
             logger.info(f"Running step {i+1}/{total_steps}: {step_name}")
             
             success = False
+            result_data = {}
+            
             if step_type == 'bash':
                 success = self.run_bash_script(script_path, args)
             elif step_type == 'python':
-                success = self.run_python_script(script_path, args)
+                success, result_data = self.run_python_script(script_path, args)
             elif step_type == 'imagej_macro':
                 success = self.run_imagej_macro(script_path, args)
             elif step_type == 'gui_application':
@@ -732,10 +743,40 @@ class WorkflowOrchestrator:
                 logger.error(f"Step {i+1}/{total_steps} failed: {step_name}")
                 return False
             
+            # Check if we need to handle the "more bins" request from threshold_grouped_cells
+            if step_name == "threshold_grouped_cells" and result_data.get('needs_more_bins', False):
+                logger.info("User requested more bins for better cell grouping")
+                
+                # Increment the bin count
+                self.bins += 1
+                logger.info(f"Increasing bin count to {self.bins}")
+                
+                # Update the workflow state
+                self.workflow_state['bins'] = self.bins
+                self._save_state()
+                
+                # Prepare to restart from the group_cells step
+                if "group_cells" in step_name_to_index:
+                    group_cells_index = step_name_to_index["group_cells"]
+                    logger.info(f"Restarting workflow from 'group_cells' step (step {group_cells_index+1})")
+                    
+                    # Reset all completions after group_cells
+                    for j in range(group_cells_index, i+1):
+                        step_to_reset = steps[j].get('name')
+                        if step_to_reset in self.workflow_state['steps_completed']:
+                            self.workflow_state['steps_completed'].remove(step_to_reset)
+                    
+                    # Jump back to group_cells step
+                    i = group_cells_index
+                    continue
+            
             # Mark step as completed
             self.workflow_state['steps_completed'].append(step_name)
             self._save_state()
             
+            # Proceed to next step
+            i += 1
+        
         # Workflow completed successfully
         self.workflow_state['end_time'] = datetime.now().isoformat()
         self._save_state()
