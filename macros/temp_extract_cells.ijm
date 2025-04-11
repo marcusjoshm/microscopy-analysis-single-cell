@@ -17,9 +17,9 @@ function endsWith(str, suffix) {
 }
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_8/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_8/raw_data/";
-outputParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_8/cells/";
+roiParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/raw_data/";
+outputParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/cells/";
 
 
 // Ensure trailing slashes for path concatenation

@@ -19,9 +19,9 @@ function endsWith(str, suffix) {
 setBatchMode(true);
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/combined_masks/";
-outputParent = "/Volumes/NX-01-A/2025-04-01_analysis_Dish_4/masks/";
+roiParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/combined_masks/";
+outputParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/masks/";
 
 // Get list of dish directories in the ROIs parent folder.
 dishes = getFileList(roiParent);
