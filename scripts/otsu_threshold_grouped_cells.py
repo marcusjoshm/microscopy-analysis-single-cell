@@ -132,9 +132,23 @@ for (d = 0; d < dishDirs.length; d++) {
     }
 }
 
-// Open a reasonable number of images for preview (up to 9)
-maxPreviewImages = 9;
-numToOpen = minOf(allImagePaths.length, maxPreviewImages);
+// Open all images for preview, but show confirmation if there are many
+if (allImagePaths.length > 10) {
+    Dialog.create("Large Number of Images");
+    Dialog.addMessage("There are " + allImagePaths.length + " grouped cell images to preview.");
+    Dialog.addMessage("Opening a large number of images simultaneously may cause memory issues.");
+    Dialog.addChoice("How to proceed:", newArray("Open all images", "Open first 10 images only"));
+    Dialog.show();
+    
+    userChoice = Dialog.getChoice();
+    if (userChoice == "Open first 10 images only") {
+        numToOpen = 10;
+    } else {
+        numToOpen = allImagePaths.length;
+    }
+} else {
+    numToOpen = allImagePaths.length;
+}
 
 if (numToOpen == 0) {
     showMessage("No Images Found", "No images were found to threshold in the specified directory.");
@@ -156,8 +170,8 @@ for (i = 0; i < numToOpen; i++) {
     run("Add Selection...", "stroke=yellow fill=#99000000");
     run("Select None");
     
-    // Tile windows for better viewing after all are open
-    if (i == numToOpen - 1) {
+    // Tile windows after opening 10 or all (if less than 10)
+    if (i == numToOpen - 1 || (i + 1) % 10 == 0) {
         run("Tile");
     }
 }
