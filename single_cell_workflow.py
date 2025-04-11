@@ -34,7 +34,7 @@ class WorkflowOrchestrator:
                  conditions: Optional[List[str]] = None, 
                  channels: Optional[List[str]] = None, 
                  timepoints=None, regions=None, setup_only=False,
-                 start_from: Optional[str] = None):
+                 start_from: Optional[str] = None, bins: int = 3):
         """
         Initialize the workflow orchestrator.
         
@@ -50,6 +50,7 @@ class WorkflowOrchestrator:
             regions (list): List of regions to analyze (e.g., ["R_1", "R_2", "R_3"]).
             setup_only (bool): Flag to indicate if only directory setup should be performed.
             start_from (str): Step name to start the workflow from (optional).
+            bins (int): Number of bins for grouping cells (default: 3).
         """
         self.config_path = config_path
         self.input_dir = Path(input_dir).resolve()
@@ -62,6 +63,7 @@ class WorkflowOrchestrator:
         self.regions = regions or []
         self.setup_only = setup_only
         self.start_from = start_from
+        self.bins = bins
         
         # --- BEGIN DEBUG LOG ---
         logger.debug(f"__init__: self.selected_conditions = {self.selected_conditions}")
@@ -89,7 +91,8 @@ class WorkflowOrchestrator:
             'selected_conditions': self.selected_conditions,
             'selected_channels': self.selected_channels,
             'selected_timepoints': self.timepoints,
-            'selected_regions': self.regions
+            'selected_regions': self.regions,
+            'bins': self.bins
         }
         
         # Load or initialize state
@@ -548,6 +551,8 @@ class WorkflowOrchestrator:
             logger.info(f"Selected regions: {', '.join(self.regions)}")
         if self.timepoints:
             logger.info(f"Selected timepoints: {', '.join(self.timepoints)}")
+        # Log number of bins
+        logger.info(f"Number of bins for grouping cells: {self.bins}")
         
         # Log experiment metadata
         logger.info(f"Experiment metadata:")
@@ -592,6 +597,18 @@ class WorkflowOrchestrator:
                 self.workflow_state['steps_skipped'].append(step_name)
                 self._save_state()
                 continue
+            
+            # Update arguments for group_cells step to use the specified bins
+            if step_name == "group_cells" and isinstance(args, list):
+                # Find the index of the "--bins" argument
+                try:
+                    bins_index = args.index("--bins")
+                    # Replace the value after "--bins" with the user-specified value
+                    if bins_index + 1 < len(args):
+                        args[bins_index + 1] = str(self.bins)
+                except ValueError:
+                    # If "--bins" is not found, append it and its value
+                    args.extend(["--bins", str(self.bins)])
             
             # Replace placeholders in args
             if isinstance(args, list):
@@ -748,14 +765,32 @@ def main():
                         help='Specific timepoints to analyze (e.g., t00 t03)')
     parser.add_argument('--regions', '-r', nargs='+', default=[],
                         help='Specific regions to analyze (e.g., R_1 R_2 R_3)')
+    parser.add_argument('--bins', type=int, default=3,
+                        help='Number of bins for grouping cells (default: 3)')
     parser.add_argument('--setup-only', action='store_true',
                         help='Only set up directory structure, do not run the workflow')
-    parser.add_argument('--start-from', type=str, default=None,
-                        help='Name of the step to start the workflow from, skipping all previous steps.')
+    parser.add_argument('--start-from', type=str,
+                        help='Start the workflow from this step (by name)')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Enable verbose logging')
+    parser.add_argument('--debug', action='store_true',
+                        help='Enable debug logging (even more detailed)')
     
     args = parser.parse_args()
     
-    # Create the workflow orchestrator
+    # Configure logging based on verbosity level
+    log_level = logging.INFO
+    if args.verbose:
+        log_level = logging.INFO  # We were already at INFO level for verbose
+    if args.debug:
+        log_level = logging.DEBUG
+    
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Create and run the workflow orchestrator
     orchestrator = WorkflowOrchestrator(
         config_path=args.config,
         input_dir=args.input,
@@ -767,34 +802,28 @@ def main():
         timepoints=args.timepoints,
         regions=args.regions,
         setup_only=args.setup_only,
-        start_from=args.start_from
+        start_from=args.start_from,
+        bins=args.bins
     )
     
-    # Set up directory structure (this replaces your analysis_setup.sh)
-    setup_success = orchestrator.setup_analysis_directories()
-    if not setup_success:
-        logger.error("Directory setup failed")
-        sys.exit(1)
+    # Set up directory structure
+    if not orchestrator.setup_analysis_directories():
+        logger.error("Failed to set up analysis directories")
+        return 1
     
-    # If --setup-only flag is provided, exit after setting up directories
+    # If only setting up directories, stop here
     if args.setup_only:
-        logger.info("Directory setup completed. Exiting as requested (--setup-only).")
-        sys.exit(0)
+        logger.info("Directory setup complete, stopping as --setup-only was specified")
+        return 0
     
-    # Run the full workflow
-    success = orchestrator.run_workflow()
-    
-    if not success:
+    # Run the workflow
+    if orchestrator.run_workflow():
+        logger.info("Workflow completed successfully")
+        return 0
+    else:
         logger.error("Workflow failed")
-        sys.exit(1)
-    
-    logger.info("Workflow completed successfully")
+        return 1
 
 
 if __name__ == "__main__":
-    # Configure logging at the start
-    logging.basicConfig(level=logging.INFO, 
-                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                        handlers=[logging.StreamHandler()]) # Ensure logs go to console
-    
-    main()
+    sys.exit(main())

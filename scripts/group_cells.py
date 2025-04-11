@@ -17,7 +17,14 @@ import glob
 from pathlib import Path
 import numpy as np
 import cv2
+try:
+    # Try to import skimage for better TIFF reading
+    from skimage import io as skio
+    HAVE_SKIMAGE = True
+except ImportError:
+    HAVE_SKIMAGE = False
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
 
 # Set up logging
 logging.basicConfig(
@@ -38,6 +45,59 @@ def compute_auc(img):
         float: The sum of all pixel values
     """
     return np.sum(img)
+
+def read_image(image_path, verbose=False):
+    """
+    Read an image file with better handling of different TIFF formats.
+    Tries multiple methods to ensure proper reading.
+    
+    Args:
+        image_path (str): Path to the image file
+        verbose (bool): Whether to print diagnostic information
+        
+    Returns:
+        numpy.ndarray: The loaded image or None if failed
+    """
+    # First try scikit-image if available (better TIFF support)
+    if HAVE_SKIMAGE:
+        try:
+            img = skio.imread(image_path)
+            # Convert to grayscale if image has multiple channels
+            if len(img.shape) > 2:
+                img = np.mean(img, axis=2).astype(img.dtype)
+            
+            if verbose:
+                logger.info(f"Read image {image_path} with skimage")
+                logger.info(f"  Shape: {img.shape}, Type: {img.dtype}")
+                logger.info(f"  Min: {np.min(img)}, Max: {np.max(img)}, Mean: {np.mean(img):.2f}")
+                logger.info(f"  Sum: {np.sum(img)}")
+            
+            return img
+        except Exception as e:
+            logger.warning(f"skimage failed to read {image_path}: {e}")
+    
+    # Fallback to OpenCV
+    try:
+        # Try reading as-is
+        img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+        if img is None:
+            # If failed, try grayscale
+            img = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+            
+        if img is not None:
+            if verbose:
+                logger.info(f"Read image {image_path} with OpenCV")
+                logger.info(f"  Shape: {img.shape}, Type: {img.dtype}")
+                logger.info(f"  Min: {np.min(img)}, Max: {np.max(img)}, Mean: {np.mean(img):.2f}")
+                logger.info(f"  Sum: {np.sum(img)}")
+                
+            return img
+        else:
+            logger.warning(f"OpenCV failed to read {image_path}")
+            return None
+    except Exception as e:
+        logger.warning(f"OpenCV error reading {image_path}: {e}")
+        return None
 
 def find_cell_directories(cells_dir):
     """
@@ -70,7 +130,7 @@ def find_cell_directories(cells_dir):
     
     return cell_dirs
 
-def group_and_sum_cells(cell_dir, output_dir, num_bins):
+def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clusters=False, verbose=False):
     """
     Group cell images by expression level and create summed images.
     
@@ -78,6 +138,9 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins):
         cell_dir (Path): Directory containing cell images
         output_dir (Path): Directory to save output summed images
         num_bins (int): Number of groups to cluster cells into
+        method (str): Clustering method ('gmm' or 'kmeans')
+        force_clusters (bool): Force creation of num_bins clusters even with similar data
+        verbose (bool): Whether to print verbose diagnostic information
         
     Returns:
         bool: True if successful, False otherwise
@@ -93,39 +156,259 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins):
     
     # List to store tuples of (filename, auc, image)
     image_data = []
+    zero_count = 0
+    nonzero_count = 0
+    
     for image_file in image_files:
-        img = cv2.imread(str(image_file), cv2.IMREAD_GRAYSCALE)
+        # Use the enhanced image reading function
+        img = read_image(str(image_file), verbose=verbose)
+        
         if img is None:
             logger.warning(f"Unable to read {image_file}. Skipping.")
             continue
+            
         auc_value = compute_auc(img)
+        
+        # Track zero vs. non-zero images for diagnostics
+        if auc_value == 0:
+            zero_count += 1
+            if verbose:
+                logger.warning(f"Image {image_file} has zero sum (all black)")
+        else:
+            nonzero_count += 1
+            
         image_data.append((str(image_file), auc_value, img))
     
     if not image_data:
         logger.warning(f"No valid images to process in {cell_dir}")
         return False
+        
+    # Report zero vs non-zero statistics
+    logger.info(f"Found {zero_count} images with zero intensity and {nonzero_count} with non-zero intensity")
     
-    # Prepare an array of AUC values for GMM clustering
+    if zero_count == len(image_data):
+        logger.error("All images have zero intensity. Check image format or file corruption.")
+        # Even with all zeros, we'll continue with forced binning if requested
+        if not force_clusters:
+            logger.info("Try using --force-clusters to create bins with equal cell counts")
+    
+    # Prepare an array of AUC values for clustering
     auc_values = np.array([data[1] for data in image_data]).reshape(-1, 1)
+    
+    # Apply log transformation to better handle wide dynamic ranges of intensity
+    if np.min(auc_values) > 0:  # Only apply log if all values are positive
+        auc_values_log = np.log1p(auc_values)  # log(1+x) to handle small values better
+    else:
+        auc_values_log = auc_values
+        
+    # Show some statistics about the intensity values
+    if len(auc_values) > 0:
+        min_val = np.min(auc_values)
+        max_val = np.max(auc_values) 
+        mean_val = np.mean(auc_values)
+        median_val = np.median(auc_values)
+        logger.info(f"Intensity stats - Min: {min_val}, Max: {max_val}, Mean: {mean_val:.2f}, Median: {median_val:.2f}")
+    
+    # Check if all values are the same or very close
+    intensity_range = max_val - min_val if len(auc_values) > 0 else 0
+    if intensity_range < 1e-6 and not force_clusters:
+        logger.warning("All images have nearly identical intensity. Clustering may not be effective.")
+        logger.info("Try using --force-clusters to create bins with equal cell counts")
     
     # Ensure we don't try to create more clusters than we have samples
     actual_num_bins = min(num_bins, len(auc_values))
     if actual_num_bins < num_bins:
         logger.warning(f"Reducing bins from {num_bins} to {actual_num_bins} due to limited samples")
     
-    # Fit Gaussian Mixture Model to cluster images based on AUC
-    gmm = GaussianMixture(n_components=actual_num_bins, random_state=0)
-    gmm.fit(auc_values)
-    labels = gmm.predict(auc_values)
+    # If all values are zero or identical and force_clusters is enabled, 
+    # bypass clustering and just divide evenly
+    if (zero_count == len(image_data) or intensity_range < 1e-6) and force_clusters:
+        logger.info("Using forced equal distribution due to identical intensity values")
+        # Divide cells evenly among the requested bins
+        sorted_indices = np.argsort(auc_values.flatten())  # Sort by intensity
+        cells_per_cluster = len(auc_values) // actual_num_bins
+        remainder = len(auc_values) % actual_num_bins
+        
+        labels = np.zeros(len(image_data), dtype=int)
+        start_idx = 0
+        for i in range(actual_num_bins):
+            cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+            end_idx = start_idx + cluster_size
+            labels[sorted_indices[start_idx:end_idx]] = i
+            start_idx = end_idx
+            
+        # Calculate cluster means
+        cluster_means = {}
+        for label in range(actual_num_bins):
+            cluster_values = auc_values[labels == label]
+            cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
     
-    # Remap cluster labels so that they are ordered by increasing AUC
-    cluster_means = {}
-    for label in range(actual_num_bins):
-        cluster_values = auc_values[labels == label]
-        if len(cluster_values) > 0:
-            cluster_means[label] = cluster_values.mean()
-        else:
-            cluster_means[label] = float('inf')
+    # Use quantile-based binning if force_clusters is enabled and we have a wide range of intensities
+    elif force_clusters and intensity_range > 1e-6:
+        logger.info(f"Using quantile-based binning to force {actual_num_bins} equally sized groups")
+        
+        # Sort cells by intensity
+        sorted_indices = np.argsort(auc_values.flatten())
+        
+        # Divide into equal-sized groups
+        cells_per_cluster = len(auc_values) // actual_num_bins
+        remainder = len(auc_values) % actual_num_bins
+        
+        labels = np.zeros(len(image_data), dtype=int)
+        start_idx = 0
+        for i in range(actual_num_bins):
+            cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+            end_idx = start_idx + cluster_size
+            labels[sorted_indices[start_idx:end_idx]] = i
+            start_idx = end_idx
+        
+        # Calculate cluster means
+        cluster_means = {}
+        for label in range(actual_num_bins):
+            cluster_values = auc_values[labels == label]
+            cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+            
+    # Otherwise, proceed with the selected clustering method
+    elif method.lower() == 'kmeans':
+        # Use K-means clustering with multiple initializations and iterations for robustness
+        kmeans = KMeans(
+            n_clusters=actual_num_bins, 
+            random_state=0, 
+            n_init=10,  # Multiple initializations to avoid bad starting conditions
+            max_iter=300,  # More iterations to ensure convergence
+        )
+        # Use the log-transformed values for better clustering with wide dynamic ranges
+        labels = kmeans.fit_predict(auc_values_log)
+        
+        # Get cluster centers for sorting
+        centers = kmeans.cluster_centers_.flatten()
+        # Get unique labels actually assigned (in case some clusters are empty)
+        unique_labels = np.unique(labels)
+        cluster_means = {label: centers[label] for label in unique_labels}
+        
+        # If forcing clusters and some clusters are empty
+        if force_clusters and len(unique_labels) < actual_num_bins:
+            logger.warning(f"K-means only found {len(unique_labels)} clusters but {actual_num_bins} were requested. "
+                           f"Redistributing data to force {actual_num_bins} clusters.")
+            
+            # Force redistribution by manually assigning to n clusters
+            # Sort data by intensity
+            sorted_indices = np.argsort(auc_values.flatten())
+            # Calculate number of cells per cluster for even distribution
+            cells_per_cluster = len(auc_values) // actual_num_bins
+            remainder = len(auc_values) % actual_num_bins
+            
+            # Assign new labels based on sorted indices
+            new_labels = np.zeros_like(labels)
+            start_idx = 0
+            for i in range(actual_num_bins):
+                # Give an extra cell to first 'remainder' clusters if division isn't even
+                cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+                end_idx = start_idx + cluster_size
+                new_labels[sorted_indices[start_idx:end_idx]] = i
+                start_idx = end_idx
+            
+            # Replace original labels with new forced distribution
+            labels = new_labels
+            
+            # Recalculate cluster means
+            cluster_means = {}
+            for label in range(actual_num_bins):
+                cluster_values = auc_values[labels == label]
+                cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+    else:
+        # Default: Gaussian Mixture Model with improved parameters
+        gmm = GaussianMixture(
+            n_components=actual_num_bins, 
+            random_state=0,
+            n_init=10,  # Multiple initializations for better convergence
+            max_iter=300,  # More iterations
+            reg_covar=1e-4,  # Regularization to improve numerical stability
+            init_params='kmeans'  # Use K-means for initialization
+        )
+        
+        # Use the log-transformed values for better clustering with wide dynamic ranges
+        gmm.fit(auc_values_log)
+        labels = gmm.predict(auc_values_log)
+        
+        # Get unique labels actually assigned
+        unique_labels = np.unique(labels)
+        
+        # Print convergence information
+        logger.info(f"GMM convergence: {gmm.converged_}")
+        if not gmm.converged_:
+            logger.warning("GMM did not converge. Consider using K-means or forced clustering.")
+            
+        # Print cluster sizes to diagnose uneven distributions
+        for label in unique_labels:
+            count = np.sum(labels == label)
+            logger.info(f"GMM cluster {label} has {count} cells ({count/len(labels)*100:.1f}%)")
+        
+        # Calculate cluster means using original values
+        cluster_means = {}
+        for label in unique_labels:
+            cluster_values = auc_values[labels == label]
+            cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+        
+        # If all cells are in one cluster or forcing clusters and some clusters are empty
+        if len(unique_labels) == 1 or (force_clusters and len(unique_labels) < actual_num_bins):
+            logger.warning(f"GMM only found {len(unique_labels)} clusters but {actual_num_bins} were requested. "
+                           f"Trying K-means as fallback method.")
+            
+            # Try K-means clustering as fallback
+            kmeans = KMeans(
+                n_clusters=actual_num_bins, 
+                random_state=0, 
+                n_init=10,
+                max_iter=300,
+            )
+            # Use the log-transformed values for better clustering
+            labels = kmeans.fit_predict(auc_values_log)
+            
+            # Check if K-means found the right number of clusters
+            kmeans_unique_labels = np.unique(labels)
+            
+            if len(kmeans_unique_labels) == actual_num_bins:
+                logger.info(f"K-means successfully found {actual_num_bins} clusters.")
+                
+                # Get cluster centers for sorting
+                centers = kmeans.cluster_centers_.flatten()
+                # Recalculate cluster means using original values
+                cluster_means = {}
+                for label in kmeans_unique_labels:
+                    cluster_values = auc_values[labels == label]
+                    cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+                    
+                # Print cluster sizes
+                for label in kmeans_unique_labels:
+                    count = np.sum(labels == label)
+                    logger.info(f"K-means cluster {label} has {count} cells ({count/len(labels)*100:.1f}%)")
+            else:
+                logger.warning(f"K-means also failed to find {actual_num_bins} clusters (found {len(kmeans_unique_labels)}). "
+                               f"Falling back to quantile-based binning.")
+                
+                # Fall back to quantile-based binning as last resort
+                sorted_indices = np.argsort(auc_values.flatten())
+                cells_per_cluster = len(auc_values) // actual_num_bins
+                remainder = len(auc_values) % actual_num_bins
+                
+                new_labels = np.zeros_like(labels)
+                start_idx = 0
+                for i in range(actual_num_bins):
+                    cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+                    end_idx = start_idx + cluster_size
+                    new_labels[sorted_indices[start_idx:end_idx]] = i
+                    start_idx = end_idx
+                
+                labels = new_labels
+                
+                # Recalculate cluster means
+                cluster_means = {}
+                for label in range(actual_num_bins):
+                    cluster_values = auc_values[labels == label]
+                    cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+    
+    # Sort clusters by mean intensity for consistent binning
     sorted_clusters = sorted(cluster_means, key=lambda k: cluster_means[k])
     label_mapping = {old_label: new_label for new_label, old_label in enumerate(sorted_clusters)}
     
@@ -136,7 +419,13 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins):
     # Group images using the mapped labels and sum them
     for idx, (filename, auc_value, img) in enumerate(image_data):
         original_label = labels[idx]
-        mapped_label = label_mapping[original_label]
+        # Only use label mapping if we have the original label in the mapping
+        if original_label in label_mapping:
+            mapped_label = label_mapping[original_label]
+        else:
+            # This shouldn't happen, but just in case
+            mapped_label = original_label % actual_num_bins
+            
         if sum_images[mapped_label] is None:
             sum_images[mapped_label] = np.zeros_like(img, dtype=np.float64)
         sum_images[mapped_label] += img.astype(np.float64)
@@ -164,13 +453,19 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins):
     with open(output_subdir / f"{cell_dir.name}_grouping_info.txt", 'w') as f:
         f.write(f"Cell directory: {cell_dir}\n")
         f.write(f"Number of cells: {len(image_data)}\n")
-        f.write(f"Number of groups: {actual_num_bins}\n\n")
+        f.write(f"Clustering method: {method}\n")
+        f.write(f"Force clusters: {force_clusters}\n")
+        f.write(f"Number of groups: {actual_num_bins}\n")
+        f.write(f"Images with zero intensity: {zero_count}\n")
+        f.write(f"Images with non-zero intensity: {nonzero_count}\n")
+        f.write(f"Intensity range: {intensity_range:.2f}\n\n")
         
         for i in range(actual_num_bins):
             f.write(f"Group {i+1}:\n")
             f.write(f"  Cells: {cell_counts[i]}\n")
-            if i in cluster_means:
-                f.write(f"  Mean intensity: {cluster_means[sorted_clusters[i]]:.2f}\n")
+            original_label = next((l for l, m in label_mapping.items() if m == i), i)
+            if original_label in cluster_means:
+                f.write(f"  Mean intensity: {cluster_means[original_label]:.2f}\n")
             f.write("\n")
     
     return True
@@ -185,6 +480,12 @@ def main():
                         help='Directory to save grouped cell images')
     parser.add_argument('--bins', '-b', type=int, default=3,
                         help='Number of groups to cluster cells into (default: 3)')
+    parser.add_argument('--clustering-method', '-m', choices=['gmm', 'kmeans'], default='gmm',
+                        help='Method to use for clustering (default: gmm)')
+    parser.add_argument('--force-clusters', '-f', action='store_true',
+                        help='Force creation of exactly --bins clusters, even with similar data')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Print verbose diagnostic information')
     
     args = parser.parse_args()
     
@@ -207,7 +508,14 @@ def main():
     successful = 0
     for condition_name, cell_dir in cell_dirs:
         logger.info(f"Processing {condition_name} - {cell_dir.name}")
-        if group_and_sum_cells(cell_dir, output_dir, args.bins):
+        if group_and_sum_cells(
+            cell_dir, 
+            output_dir, 
+            args.bins, 
+            method=args.clustering_method,
+            force_clusters=args.force_clusters,
+            verbose=args.verbose
+        ):
             successful += 1
     
     logger.info(f"Successfully processed {successful} out of {len(cell_dirs)} cell directories")

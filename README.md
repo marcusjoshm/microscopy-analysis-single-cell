@@ -242,6 +242,7 @@ By default, this will process all conditions, regions, channels, and timepoints 
 - `--channels`: Analyze only specified channels (e.g., `--channels "ch00" "ch01"`).
 - `--timepoints`: Analyze only specified timepoints (e.g., `--timepoints "t00" "t03"`).
 - `--regions`: Analyze only specified regions (e.g., `--regions "R_1" "R_2"`).
+- `--bins`: Specify the number of bins for grouping cells (default: 3). For example, `--bins 5` will create 5 intensity-based cell groups.
 - `--setup-only`: Only create the directory structure and copy raw data; do not run any processing steps.
 
 ### Example Usage with Optional Arguments
@@ -258,6 +259,16 @@ python single_cell_workflow.py \
     --regions "R_1" "R_3" \
     --timepoints "t00" "t03" \
     --channels "ch01"
+```
+
+To use 5 bins for cell grouping instead of the default 3:
+
+```
+python single_cell_workflow.py \
+    --config workflow_config.json \
+    --input /path/to/input \
+    --output /path/to/output \
+    --bins 5
 ```
 
 ### Single Timepoint Data
@@ -300,6 +311,12 @@ Example: `Dish_1_Control/Some_Subfolder/R_1_Merged_t00_ch01.tif`
 
 ## Recent Updates
 
+- **Improved Cell Grouping:** Enhanced cell grouping algorithm to better handle varying intensity distributions:
+  - Added log transformation for wide dynamic ranges
+  - Implemented K-means fallback when GMM clustering struggles
+  - Added quantile-based binning for even distribution
+  - Improved diagnostic logging to help troubleshoot clustering issues
+- **Configurable Grouping Bins:** Added `--bins` parameter to specify the number of intensity groups (default: 3)
 - **Dynamic Directory Setup:** The initial directory structure setup is now based on user selections provided via command line (or defaults to all data if no selections are given).
 - **Refined Selection Logic:** Command-line selections (`--conditions`, `--regions`, etc.) directly control the data subset processed throughout the workflow, bypassing manual prompts.
 - **Removed Steps:** `manual_quality_check` step removed. Directory setup is now handled automatically at the start, not as a configurable step.
