@@ -346,6 +346,19 @@ Example: `Dish_1_Control/Some_Subfolder/R_1_Merged_t00_ch01.tif`
 
 ## Recent Updates
 
+- **Staged Directory Creation:** Implemented a more progressive directory creation process:
+  - `setup_base_directories`: Creates only the top-level directories first
+  - `setup_condition_directories`: Creates condition subdirectories right after condition selection
+  - `setup_timepoint_directories`: Creates timepoint placeholder directories after timepoint selection
+  - `setup_analysis_directories`: Creates final region-timepoint directories and copies only relevant files
+  - This gives users visual feedback as they progress through selections
+  - Ensures a cleaner directory structure with only needed subdirectories
+
+- **Prepare Input Structure First:** Rearranged workflow to run prepare_input_structure.sh before any selection steps:
+  - Input data is now properly organized before users make any selections
+  - Enables proper metadata extraction from the standardized structure
+  - Selection steps now present accurate condition/region/timepoint options
+
 - **Automatic Input Structure Preparation:** Added preprocessing step to standardize data directories:
   - Automatically detects and handles three common input structure patterns from LASX exports
   - Removes unnecessary MetaData directories

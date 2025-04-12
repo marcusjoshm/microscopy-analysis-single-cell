@@ -50,6 +50,60 @@ has_subdirectories() {
     return $?
 }
 
+# Function to check if a filename contains a timepoint pattern (tXX)
+has_timepoint_pattern() {
+    if [[ "$1" =~ t[0-9]+ ]]; then
+        return 0  # Pattern found
+    else
+        return 1  # Pattern not found
+    fi
+}
+
+# Function to check if a filename contains a channel pattern (chXX)
+has_channel_pattern() {
+    if [[ "$1" =~ ch[0-9]+ ]]; then
+        return 0  # Pattern found
+    else
+        return 1  # Pattern not found
+    fi
+}
+
+# Function to process files in a timepoint directory
+# This creates symbolic links with required patterns rather than renaming files
+process_timepoint_directory() {
+    local timepoint_dir="$1"
+    local region_counter=1
+    
+    echo -e "${BLUE}Processing files in: $timepoint_dir${NC}"
+    for tif_file in "$timepoint_dir"/*.tif; do
+        if [ -f "$tif_file" ]; then
+            local filename=$(basename "$tif_file")
+            local dirname=$(dirname "$tif_file")
+            
+            # Check if missing timepoint pattern
+            if ! has_timepoint_pattern "$filename"; then
+                echo -e "${YELLOW}File missing timepoint pattern: $filename${NC}"
+                filename="${filename%.tif}_t00.tif"
+                echo -e "${GREEN}Adding timepoint pattern: $filename${NC}"
+                mv "$tif_file" "$dirname/$filename"
+                tif_file="$dirname/$filename"
+            fi
+            
+            # Check if missing channel pattern
+            if ! has_channel_pattern "$filename"; then
+                echo -e "${YELLOW}File missing channel pattern: $filename${NC}"
+                filename="${filename%.tif}_ch00.tif"
+                echo -e "${GREEN}Adding channel pattern: $filename${NC}"
+                mv "$tif_file" "$dirname/$filename"
+            fi
+            
+            # Each file is considered its own region
+            echo -e "${GREEN}File will be treated as Region $region_counter: $filename${NC}"
+            region_counter=$((region_counter + 1))
+        fi
+    done
+}
+
 # First, remove any MetaData directory
 if [ -d "$INPUT_DIR/MetaData" ]; then
     echo -e "${YELLOW}Removing MetaData directory${NC}"
@@ -69,6 +123,9 @@ if [ $TIF_COUNT -gt 0 ]; then
     
     # Move all .tif files into the new structure
     find "$INPUT_DIR" -maxdepth 1 -name "*.tif" -exec mv {} "$INPUT_DIR/condition_1/timepoint_1/" \;
+    
+    # Process files in the timepoint directory
+    process_timepoint_directory "$INPUT_DIR/condition_1/timepoint_1"
     
     echo -e "${GREEN}Successfully reorganized .tif files into condition_1/timepoint_1/${NC}"
 else
@@ -94,10 +151,14 @@ else
                     # Move all .tif files into the timepoint directory
                     find "$SUBDIR" -maxdepth 1 -name "*.tif" -exec mv {} "$SUBDIR/timepoint_1/" \;
                     
+                    # Process files in the timepoint directory
+                    process_timepoint_directory "$SUBDIR/timepoint_1"
+                    
                     echo -e "${GREEN}Successfully reorganized .tif files into $CONDITION_NAME/timepoint_1/${NC}"
                 else
                     # Check if this might be a condition directory with timepoint subdirectories
                     if has_subdirectories "$SUBDIR"; then
+                        CONDITION_NAME=$(basename "$SUBDIR")
                         echo -e "${BLUE}Subdirectory $CONDITION_NAME has its own subdirectories${NC}"
                         
                         # Check if any of those subdirectories have .tif files
@@ -107,7 +168,11 @@ else
                                 TP_TIF_COUNT=$(count_tif_files "$TIMEPOINT_DIR")
                                 if [ $TP_TIF_COUNT -gt 0 ]; then
                                     TIF_FILES_FOUND=1
-                                    echo -e "${BLUE}Found $TP_TIF_COUNT .tif files in $(basename "$TIMEPOINT_DIR")${NC}"
+                                    TP_DIR_NAME=$(basename "$TIMEPOINT_DIR")
+                                    echo -e "${BLUE}Found $TP_TIF_COUNT .tif files in $TP_DIR_NAME${NC}"
+                                    
+                                    # Process files in the timepoint directory
+                                    process_timepoint_directory "$TIMEPOINT_DIR"
                                 fi
                             fi
                         done
@@ -138,6 +203,13 @@ find "$INPUT_DIR" -type d | sort | while read -r dir; do
     depth=$(($(echo "$dir" | tr -cd '/' | wc -c) - $(echo "$INPUT_DIR" | tr -cd '/' | wc -c)))
     indent=$(printf "%$(($depth * 2))s" "")
     echo "${indent}$(basename "$dir")/"
+done
+
+# Print final TIFF files for verification
+echo -e "${BLUE}Final .tif files:${NC}"
+find "$INPUT_DIR" -name "*.tif" | sort | while read -r tif; do
+    rel_path="${tif#$INPUT_DIR/}"
+    echo "  $rel_path"
 done
 
 exit 0 

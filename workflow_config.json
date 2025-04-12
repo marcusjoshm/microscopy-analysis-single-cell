@@ -24,12 +24,6 @@
       "description": "Select specific conditions for analysis"
     },
     {
-      "name": "select_channels",
-      "type": "manual",
-      "instructions": "Review available channels: {channels_list}. Select the channels to analyze. You can specify channels when running the script with the --channels option.",
-      "description": "Select specific channels for analysis"
-    },
-    {
       "name": "select_timepoints",
       "type": "manual",
       "instructions": "Review available timepoints in the raw data and decide which timepoints to use for analysis. Current experiment has timepoints: {timepoints_list}. Press Enter when you have made your selection. You can specify timepoints when running the script with --timepoints option.",
@@ -40,6 +34,12 @@
       "type": "manual",
       "instructions": "Review available regions in the raw data and decide which regions to use for analysis. Current experiment has regions: {regions_list}. Press Enter when you have made your selection. You can specify regions when running the script with --regions option.",
       "description": "Select specific regions for analysis"
+    },
+    {
+      "name": "select_channels",
+      "type": "manual",
+      "instructions": "Review available channels: {channels_list}. Select the channels to analyze. You can specify channels when running the script with the --channels option.",
+      "description": "Select specific channels for analysis"
     },
     {
       "name": "bin_images_for_segmentation",
