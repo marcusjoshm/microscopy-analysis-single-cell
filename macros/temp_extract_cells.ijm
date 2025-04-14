@@ -17,9 +17,9 @@ function endsWith(str, suffix) {
 }
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/raw_data/";
-outputParent = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/cells/";
+roiParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/raw_data/";
+outputParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/cells/";
 
 
 // Ensure trailing slashes for path concatenation
@@ -147,36 +147,66 @@ for (d = 0; d < dishes.length; d++) {
                 continue;
             }
             
-            // Extract the region identifier
+            // Extract the region identifier from the base name
+            // Adding more debugging for region matching
+            print("DEBUG - Analyzing for region: " + baseName);
             region = "";
-            if (indexOf(baseName, "R_1") >= 0 || indexOf(baseName, "1_") >= 0) {
+            
+            // Add a more flexible pattern for region identification
+            if (indexOf(baseName, "50min_Washout") >= 0) {
+                region = "50min_Washout";
+                print("DEBUG - Matched 50min_Washout pattern");
+            } else if (indexOf(baseName, "TS1_50min") >= 0) {
+                region = "TS1_50min";
+                print("DEBUG - Matched TS1_50min pattern");
+            } else if (indexOf(baseName, "TS2_50min") >= 0) {
+                region = "TS2_50min";
+                print("DEBUG - Matched TS2_50min pattern");
+            } else if (indexOf(baseName, "R_1") >= 0 || indexOf(baseName, "1_") >= 0) {
                 region = "R_1";
+                print("DEBUG - Matched R_1 pattern");
             } else if (indexOf(baseName, "R_2") >= 0 || indexOf(baseName, "2_") >= 0) {
                 region = "R_2";
+                print("DEBUG - Matched R_2 pattern");
             } else if (indexOf(baseName, "R_3") >= 0 || indexOf(baseName, "3_") >= 0) {
                 region = "R_3";
+                print("DEBUG - Matched R_3 pattern");
             } else if (indexOf(baseName, "R_4") >= 0 || indexOf(baseName, "4_") >= 0) {
                 region = "R_4";
+                print("DEBUG - Matched R_4 pattern");
             } else {
-                print("Could not identify region in: " + baseName);
-                continue;
+                // If no pattern matches, use the entire base name as the region
+                region = baseName;
+                print("DEBUG - No region pattern match, using full base name: " + baseName);
             }
             
             print("Identified region: " + region);
             
             // Determine the timepoint from the baseName.
+            // Add debugging for timepoint matching
+            print("DEBUG - Analyzing for timepoint: " + baseName);
             timepoint = "";
             timeLabel = "";
             
             if (indexOf(baseName, "t00") >= 0) {
                 timepoint = "t00";
                 timeLabel = "t00";
+                print("DEBUG - Matched t00 timepoint");
             } else if (indexOf(baseName, "t03") >= 0) {
                 timepoint = "t03";
                 timeLabel = "t03";
+                print("DEBUG - Matched t03 timepoint");
             } else {
-                print("Timepoint not found in: " + baseName);
-                continue;
+                print("DEBUG - No explicit timepoint found, checking for timepoint_1 in folder structure");
+                // Try to extract timepoint from folder structure if not in filename
+                if (indexOf(regionFolder, "timepoint_1") >= 0) {
+                    timepoint = "t00";  // Map timepoint_1 to t00
+                    timeLabel = "t00";
+                    print("DEBUG - Using t00 based on timepoint_1 folder");
+                } else {
+                    print("Timepoint not found in: " + baseName + " or folder structure");
+                    continue;
+                }
             }
             
             print("Identified timepoint: " + timepoint + " -> " + timeLabel);
@@ -202,6 +232,7 @@ for (d = 0; d < dishes.length; d++) {
             
             // Set up the output folder for processed cells.
             outputFolder = outputParent + dishName + "/" + region + "_" + timeLabel + "/";
+            print("Output folder for cells: " + outputFolder);
             if (!File.exists(outputFolder)) {
                 print("Creating output directory: " + outputFolder);
                 File.makeDirectory(outputFolder);

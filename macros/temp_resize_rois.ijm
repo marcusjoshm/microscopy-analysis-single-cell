@@ -1,8 +1,8 @@
 
 // Resize ROIs Macro for Single Cell Analysis Workflow
 // Input and output directories
-input_dir = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/preprocessed";
-output_dir = "/Volumes/NX-01-A/2025-04-11_analysis_Dish_2/ROIs";
+input_dir = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/preprocessed";
+output_dir = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/ROIs";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);

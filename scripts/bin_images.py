@@ -4,8 +4,8 @@
 """
 Bin microscopy images for cell segmentation.
 
-This script recursively searches for t00_ch01.tif and t03_ch01.tif files in the specified
-input directory, performs 4x4 binning and contrast enhancement, and saves the processed 
+This script recursively searches for .tif files in the specified
+input directory, performs 4x4 binning, and saves the processed 
 images to the output directory.
 """
 
@@ -37,9 +37,6 @@ def bin_image(image, bin_factor=4):
         numpy.ndarray: Binned image
     """
     return downscale_local_mean(image, (bin_factor, bin_factor))
-
-
-# Contrast enhancement function removed as requested
 
 
 def process_images(input_dir, output_dir, bin_factor=4,
@@ -91,19 +88,15 @@ def process_images(input_dir, output_dir, bin_factor=4,
         
         # --- Filter based on selections ---
         try:
-            # Extract condition by looking for a parent directory starting with 'Dish_'
+            # Extract condition from parent directory path
+            # The condition is usually the first directory under the input directory
             current_condition = None
-            # Go up the directory tree from the file's parent
-            for parent in file_path.parents:
-                if parent.name.startswith('Dish_'):
-                    current_condition = parent.name
-                    break # Found the condition directory
-                # Stop searching if we go above the input directory base
-                if parent == input_path:
-                    break 
+            relative_path = file_path.relative_to(input_path)
+            if len(relative_path.parts) > 0:
+                current_condition = relative_path.parts[0]
                 
             if not current_condition:
-                logger.warning(f"Could not find condition directory (starting with 'Dish_') for {file_path}. Skipping.")
+                logger.warning(f"Could not determine condition directory for {file_path}. Skipping.")
                 continue
                 
             if selected_conditions and current_condition not in selected_conditions:
@@ -111,20 +104,28 @@ def process_images(input_dir, output_dir, bin_factor=4,
                 
             # Extract region, timepoint, channel from filename
             filename = file_path.name
-            region_match = re.search(r'(R_\d+)', filename)
+            
+            # Match region from filename - adapt pattern to your actual filenames
+            # This example looks for the prefix before "_Merged_" as the region
+            region_pattern = r'(.+?)_Merged_'
+            region_match = re.search(region_pattern, filename)
+            current_region = region_match.group(1) if region_match else None
+            
+            # Match timepoint and channel patterns (t00, ch01 format)
             timepoint_match = re.search(r'(t\d+)', filename)
             channel_match = re.search(r'(ch\d+)', filename)
             
-            current_region = region_match.group(1) if region_match else None
             current_timepoint = timepoint_match.group(1) if timepoint_match else None
             current_channel = channel_match.group(1) if channel_match else None
 
+            logger.debug(f"Parsed metadata - Condition: {current_condition}, Region: {current_region}, Timepoint: {current_timepoint}, Channel: {current_channel}")
+
             # Apply filters
-            if selected_regions and current_region not in selected_regions:
+            if selected_regions and (not current_region or current_region not in selected_regions):
                 continue
-            if selected_timepoints and current_timepoint not in selected_timepoints:
+            if selected_timepoints and (not current_timepoint or current_timepoint not in selected_timepoints):
                 continue
-            if selected_channels and current_channel not in selected_channels:
+            if selected_channels and (not current_channel or current_channel not in selected_channels):
                 continue
                 
         except Exception as e:
@@ -134,26 +135,14 @@ def process_images(input_dir, output_dir, bin_factor=4,
         
         logger.info(f"Processing {file_path}...")
         
-        # Determine relative path to maintain directory structure
+        # Determine output path maintaining directory structure
         try:
-            # Find the condition directory path again to build the relative path
-            condition_dir_path = None
-            for parent in file_path.parents:
-                if parent.name == current_condition: # Use the already extracted condition name
-                    condition_dir_path = parent
-                    break
+            # Maintain the same structure as input
+            # For example: input/condition/timepoint_1/file.tif -> output/condition/timepoint_1/bin4x4_file.tif
+            relative_path = file_path.relative_to(input_path)
+            output_file = output_path / relative_path.parent / f"bin4x4_{file_path.name}"
             
-            if not condition_dir_path:
-                # This shouldn't happen if the filtering logic above worked, but as a safeguard:
-                logger.error(f"Could not re-find condition directory for {file_path}. Cannot determine output path.")
-                continue
-
-            # Relative path should preserve structure *below* the condition directory
-            rel_path_from_condition = file_path.relative_to(condition_dir_path)
-            # Output path: output_base / condition_name / relative_path_from_condition
-            output_file = output_path / current_condition / rel_path_from_condition.parent / f"bin4x4_{file_path.name}"
-
-            # Create output directory for the specific condition/structure if it doesn't exist
+            # Create output directory structure
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
             # Read the image
@@ -162,7 +151,7 @@ def process_images(input_dir, output_dir, bin_factor=4,
             # Bin the image
             binned_image = bin_image(image, bin_factor=bin_factor)
             
-            # Save the processed image (contrast enhancement removed)
+            # Save the processed image
             tifffile.imwrite(output_file, binned_image.astype(image.dtype))
             
             logger.info(f"Saved binned image to {output_file}")
@@ -179,13 +168,12 @@ def main():
     parser = argparse.ArgumentParser(description="Bin microscopy images for cell segmentation")
     parser.add_argument("--input", "-i", required=True, help="Input directory containing raw image data")
     parser.add_argument("--output", "-o", required=True, help="Output directory for binned images")
-    parser.add_argument("--conditions", nargs='+', help="List of conditions to process (e.g., Dish_1 Dish_2)")
-    parser.add_argument("--regions", nargs='+', help="List of regions to process (e.g., R_1 R_2)")
+    parser.add_argument("--conditions", nargs='+', help="List of conditions to process")
+    parser.add_argument("--regions", nargs='+', help="List of regions to process")
     parser.add_argument("--timepoints", nargs='+', help="List of timepoints to process (e.g., t00 t03)")
     parser.add_argument("--channels", nargs='+', help="List of channels to process (e.g., ch00 ch01)")
     parser.add_argument("--bin-factor", "-b", type=int, default=4, help="Binning factor (default: 4)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose debug logging")
-    # Percentile parameter removed as contrast enhancement is no longer needed
     
     args = parser.parse_args()
     
