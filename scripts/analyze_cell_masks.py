@@ -192,7 +192,7 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
     Args:
         input_dir (str): Input directory to search
         max_files (int): Maximum number of files to find
-        regions (list): List of regions to include (e.g., R_1, R_2)
+        regions (list): List of regions to include (e.g., R_1, R_2, or custom regions like '50min_Washout_LSG1-Halo')
         timepoints (list): List of timepoints to include (e.g., t00, t03)
         
     Returns:
@@ -237,15 +237,10 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
     logger.info(f"Filtering by regions: {target_regions}")
     logger.info(f"Filtering by timepoints: {target_timepoints}")
     
-    # Count files for debugging (REMOVED - not used anymore)
-    # all_mask_files = [] 
-    # matched_directories = []
-    
     # Search for .tif and .tiff files
     for extension in ["tif", "tiff"]:
         pattern = os.path.join(input_dir, "**", f"MASK_CELL*.{extension}")
-        # REMOVED DEBUG LOG
-        # logger.info(f"Searching with pattern: {pattern}")
+        logger.info(f"Searching with pattern: {pattern}")
         
         for mask_path in glob.glob(pattern, recursive=True):
             # Get the parent directory (usually contains the condition/region info)
@@ -253,51 +248,73 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
             
             # Extract region and timepoint from the directory name
             dir_name = os.path.basename(parent_dir)
-            # REMOVED DEBUG LOG
-            # logger.info(f"Processing directory: {dir_name}")
+            logger.info(f"Processing directory: {dir_name}")
             
-            # Match the new pattern: R_X_tXX
-            region_match = re.match(r"(R_\d+)_(t\d+)", dir_name)
+            # Try several patterns to match directories
+            region = None
+            timepoint = None
             
-            if region_match:
-                region = region_match.group(1)
-                timepoint = region_match.group(2)
-                # REMOVED DEBUG LOG
-                # logger.info(f"  Matched region: {region}, timepoint: {timepoint}")
+            # First try the standard R_X_tXX pattern
+            standard_match = re.match(r"(R_\d+)_(t\d+)", dir_name)
+            if standard_match:
+                region = standard_match.group(1)
+                timepoint = standard_match.group(2)
+                logger.info(f"  Matched standard pattern - region: {region}, timepoint: {timepoint}")
+            
+            # If that doesn't match, try the custom pattern with region_timepoint
+            elif '_' in dir_name:
+                # Try to match a pattern like "50min_Washout_t00" or "region_t00"
+                custom_match = re.match(r"(.+?)_(t\d+)$", dir_name)
+                if custom_match:
+                    region = custom_match.group(1)
+                    timepoint = custom_match.group(2)
+                    logger.info(f"  Matched custom pattern - region: {region}, timepoint: {timepoint}")
+            
+            # If we still don't have a match, try to extract as much info as possible
+            if region is None or timepoint is None:
+                # Look for any timepoint pattern
+                tp_match = re.search(r"(t\d+)", dir_name)
+                if tp_match:
+                    timepoint = tp_match.group(1)
+                    # Use the rest as the region
+                    parts = dir_name.split(timepoint)
+                    potential_region = parts[0].strip('_')
+                    if potential_region:
+                        region = potential_region
+                    logger.info(f"  Extracted from parts - region: {region}, timepoint: {timepoint}")
+            
+            # Skip if we couldn't extract both region and timepoint
+            if region is None or timepoint is None:
+                logger.info(f"  Could not extract region/timepoint from directory: {dir_name}")
+                continue
+            
+            # Filter by regions if specified
+            if target_regions and region not in target_regions:
+                logger.info(f"  Skipping {dir_name} due to region filter ({region} not in {target_regions})")
+                continue
                 
-                # Filter by regions if specified
-                if target_regions and region not in target_regions:
-                    # REMOVED DEBUG LOG
-                    # logger.info(f"  Skipping due to region filter")
-                    continue
-                    
-                # Filter by timepoints if specified
-                if target_timepoints and timepoint not in target_timepoints:
-                    # REMOVED DEBUG LOG
-                    # logger.info(f"  Skipping due to timepoint filter")
-                    continue
-                
-                # REMOVED DEBUG LOG - not needed as we store paths in dict
-                # matched_directories.append(parent_dir)
-                
-                # REMOVED DEBUG LOG
-                # logger.info(f"  Adding mask file: {mask_path}")
-                
-                # Add the file to the appropriate directory group
-                if parent_dir not in mask_files_by_dir:
-                    mask_files_by_dir[parent_dir] = []
-                mask_files_by_dir[parent_dir].append(mask_path)
-            # REMOVED DEBUG LOG
-            # else:
-            #     logger.info(f"  No region/timepoint match for directory: {dir_name}")
-    
-    # REMOVED DEBUG LOGS
-    # logger.info(f"Found {len(all_mask_files)} total mask files in input directory")
-    # logger.info(f"Matched {len(matched_directories)} directories")
+            # Filter by timepoints if specified
+            if target_timepoints and timepoint not in target_timepoints:
+                logger.info(f"  Skipping {dir_name} due to timepoint filter ({timepoint} not in {target_timepoints})")
+                continue
+            
+            # Add the file to the appropriate directory group
+            if parent_dir not in mask_files_by_dir:
+                mask_files_by_dir[parent_dir] = []
+            mask_files_by_dir[parent_dir].append(mask_path)
+            logger.info(f"  Added mask file: {os.path.basename(mask_path)}")
     
     # Log the results
     total_files = sum(len(files) for files in mask_files_by_dir.values())
     logger.info(f"Found {total_files} mask files in {len(mask_files_by_dir)} directories matching filters")
+    
+    # Log the contents of each matched directory
+    for dir_path, file_paths in mask_files_by_dir.items():
+        logger.info(f"Directory {os.path.basename(dir_path)} has {len(file_paths)} mask files")
+        for i, file_path in enumerate(file_paths[:3]):
+            logger.info(f"  Sample file {i+1}: {os.path.basename(file_path)}")
+        if len(file_paths) > 3:
+            logger.info(f"  ...and {len(file_paths) - 3} more files")
     
     if total_files == 0:
         logger.error(f"No mask files found in {input_dir} matching filters")
