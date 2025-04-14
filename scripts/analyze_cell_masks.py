@@ -193,6 +193,7 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
         input_dir (str): Input directory to search
         max_files (int): Maximum number of files to find
         regions (list): List of regions to include (e.g., R_1, R_2, or custom regions like '50min_Washout_LSG1-Halo')
+                       When specified, directories will match if they contain any part of these regions or vice versa
         timepoints (list): List of timepoints to include (e.g., t00, t03)
         
     Returns:
@@ -288,10 +289,19 @@ def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
                 logger.info(f"  Could not extract region/timepoint from directory: {dir_name}")
                 continue
             
-            # Filter by regions if specified
-            if target_regions and region not in target_regions:
-                logger.info(f"  Skipping {dir_name} due to region filter ({region} not in {target_regions})")
-                continue
+            # Filter by regions if specified - with more flexible matching
+            if target_regions:
+                region_match = False
+                for target_region in target_regions:
+                    # Check if the directory region is a subset of a target region
+                    if region in target_region or target_region in region:
+                        region_match = True
+                        logger.info(f"  Region {region} matched with target region {target_region}")
+                        break
+                
+                if not region_match:
+                    logger.info(f"  Skipping {dir_name} due to region filter (no match found between {region} and {target_regions})")
+                    continue
                 
             # Filter by timepoints if specified
             if target_timepoints and timepoint not in target_timepoints:
