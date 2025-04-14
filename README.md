@@ -1,6 +1,16 @@
 # Microscopy Analysis for Single-Cell Imaging
 
-A comprehensive workflow for analyzing microscopy data at the single-cell level, including segmentation, tracking, mask creation, and quantitative analysis. Under construction...
+End-to-end single-cell analysis workflow for fluorescence microscopy datasets exported from LASX.
+
+It uses cellpose for single-cell segmentation. Then, cells are grouped according to similar expression levels. It uses imageJ for assisted intensity-based auto thresholding to generate binary masks for particle analysis. The workflow saves all the processed files, including:
+
+- raw .tifs
+- ROIs of the individual cells
+- .tifs of the individual cells
+- binary masks of the thresholded data as individual cells and the complete tile-scan
+- particle analysis, including particle count and area per cell, saved as a .csv
+
+This workflow was optimized for quantifying stress granules and other cytoplasmic biomolecular condensates. 
 
 ## Overview
 
