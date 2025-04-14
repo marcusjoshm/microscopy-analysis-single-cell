@@ -19,9 +19,9 @@ function endsWith(str, suffix) {
 setBatchMode(true);
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/combined_masks/";
-outputParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_1/masks/";
+roiParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_5/ROIs/";
+rawDataParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_5/combined_masks/";
+outputParent = "/Volumes/NX-01-A/2025-04-13_analysis_Dish_5/masks/";
 
 print("ROI directory: " + roiParent);
 print("Mask directory: " + rawDataParent);
