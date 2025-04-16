@@ -92,9 +92,9 @@
       "name": "group_cells",
       "type": "python",
       "path": "scripts/group_cells.py",
-      "args": ["--cells-dir", "{output_dir}/cells", "--output-dir", "{output_dir}/grouped_cells", "--bins", "3", "--force-clusters"],
+      "args": ["--cells-dir", "{output_dir}/cells", "--output-dir", "{output_dir}/grouped_cells", "--bins", "5", "--force-clusters"],
       "description": "Group cells by expression level and create summed images",
-      "notes": "Optional parameters available: '--clustering-method kmeans' to use K-means instead of GMM, '--force-clusters' to ensure all bin groups are created even with similar data"
+      "notes": "Optional parameters available: '--clustering-method gmm' to use GMM instead of K-means (which is now the default), '--force-clusters' to ensure all bin groups are created even with similar data"
     },
     {
       "name": "threshold_grouped_cells",
