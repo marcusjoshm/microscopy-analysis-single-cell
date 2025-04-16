@@ -23,6 +23,12 @@ try:
     HAVE_SKIMAGE = True
 except ImportError:
     HAVE_SKIMAGE = False
+try:
+    # Import tifffile for preserving metadata when writing TIFF files
+    import tifffile
+    HAVE_TIFFFILE = True
+except ImportError:
+    HAVE_TIFFFILE = False
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
 
@@ -56,9 +62,48 @@ def read_image(image_path, verbose=False):
         verbose (bool): Whether to print diagnostic information
         
     Returns:
-        numpy.ndarray: The loaded image or None if failed
+        tuple: The loaded image and any metadata if available, or (None, None) if failed
     """
-    # First try scikit-image if available (better TIFF support)
+    metadata = None
+    
+    # Try tifffile first if available (best for metadata preservation)
+    if HAVE_TIFFFILE:
+        try:
+            with tifffile.TiffFile(image_path) as tif:
+                img = tif.asarray()
+                # Try to extract resolution information
+                if hasattr(tif, 'pages') and len(tif.pages) > 0:
+                    page = tif.pages[0]
+                    if hasattr(page, 'tags'):
+                        # Extract resolution information if available
+                        metadata = {}
+                        if 'XResolution' in page.tags:
+                            metadata['XResolution'] = page.tags['XResolution'].value
+                        if 'YResolution' in page.tags:
+                            metadata['YResolution'] = page.tags['YResolution'].value
+                        if 'ResolutionUnit' in page.tags:
+                            metadata['ResolutionUnit'] = page.tags['ResolutionUnit'].value
+                        # Also check for ImageJ metadata
+                        if hasattr(page, 'imagej_tags') and page.imagej_tags:
+                            metadata.update(page.imagej_tags)
+                
+                # Convert to grayscale if image has multiple channels
+                if len(img.shape) > 2:
+                    img = np.mean(img, axis=2).astype(img.dtype)
+                
+                if verbose:
+                    logger.info(f"Read image {image_path} with tifffile")
+                    logger.info(f"  Shape: {img.shape}, Type: {img.dtype}")
+                    logger.info(f"  Min: {np.min(img)}, Max: {np.max(img)}, Mean: {np.mean(img):.2f}")
+                    logger.info(f"  Sum: {np.sum(img)}")
+                    if metadata:
+                        logger.info(f"  Metadata: {metadata}")
+                
+                return img, metadata
+        except Exception as e:
+            logger.warning(f"tifffile failed to read {image_path}: {e}")
+    
+    # Next try scikit-image if available
     if HAVE_SKIMAGE:
         try:
             img = skio.imread(image_path)
@@ -72,7 +117,7 @@ def read_image(image_path, verbose=False):
                 logger.info(f"  Min: {np.min(img)}, Max: {np.max(img)}, Mean: {np.mean(img):.2f}")
                 logger.info(f"  Sum: {np.sum(img)}")
             
-            return img
+            return img, None
         except Exception as e:
             logger.warning(f"skimage failed to read {image_path}: {e}")
     
@@ -91,13 +136,13 @@ def read_image(image_path, verbose=False):
                 logger.info(f"  Min: {np.min(img)}, Max: {np.max(img)}, Mean: {np.mean(img):.2f}")
                 logger.info(f"  Sum: {np.sum(img)}")
                 
-            return img
+            return img, None
         else:
             logger.warning(f"OpenCV failed to read {image_path}")
-            return None
+            return None, None
     except Exception as e:
         logger.warning(f"OpenCV error reading {image_path}: {e}")
-        return None
+        return None, None
 
 def find_cell_directories(cells_dir):
     """
@@ -154,18 +199,28 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
     
     logger.info(f"Processing {len(image_files)} cells from {cell_dir}")
     
-    # List to store tuples of (filename, auc, image)
+    # List to store tuples of (filename, auc, image, metadata)
     image_data = []
     zero_count = 0
     nonzero_count = 0
     
+    # Variable to store metadata - we'll use the first non-empty one
+    reference_metadata = None
+    
     for image_file in image_files:
         # Use the enhanced image reading function
-        img = read_image(str(image_file), verbose=verbose)
+        img, metadata = read_image(str(image_file), verbose=verbose)
         
         if img is None:
             logger.warning(f"Unable to read {image_file}. Skipping.")
             continue
+        
+        # Store the first metadata we find for reference
+        if metadata is not None and reference_metadata is None:
+            reference_metadata = metadata
+            if verbose:
+                logger.info(f"Using metadata from {image_file} as reference")
+                logger.info(f"Reference metadata: {reference_metadata}")
             
         auc_value = compute_auc(img)
         
@@ -177,7 +232,7 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
         else:
             nonzero_count += 1
             
-        image_data.append((str(image_file), auc_value, img))
+        image_data.append((str(image_file), auc_value, img, metadata))
     
     if not image_data:
         logger.warning(f"No valid images to process in {cell_dir}")
@@ -269,55 +324,8 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
             cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
             
     # Otherwise, proceed with the selected clustering method
-    elif method.lower() == 'kmeans':
-        # Use K-means clustering with multiple initializations and iterations for robustness
-        kmeans = KMeans(
-            n_clusters=actual_num_bins, 
-            random_state=0, 
-            n_init=10,  # Multiple initializations to avoid bad starting conditions
-            max_iter=300,  # More iterations to ensure convergence
-        )
-        # Use the log-transformed values for better clustering with wide dynamic ranges
-        labels = kmeans.fit_predict(auc_values_log)
-        
-        # Get cluster centers for sorting
-        centers = kmeans.cluster_centers_.flatten()
-        # Get unique labels actually assigned (in case some clusters are empty)
-        unique_labels = np.unique(labels)
-        cluster_means = {label: centers[label] for label in unique_labels}
-        
-        # If forcing clusters and some clusters are empty
-        if force_clusters and len(unique_labels) < actual_num_bins:
-            logger.warning(f"K-means only found {len(unique_labels)} clusters but {actual_num_bins} were requested. "
-                           f"Redistributing data to force {actual_num_bins} clusters.")
-            
-            # Force redistribution by manually assigning to n clusters
-            # Sort data by intensity
-            sorted_indices = np.argsort(auc_values.flatten())
-            # Calculate number of cells per cluster for even distribution
-            cells_per_cluster = len(auc_values) // actual_num_bins
-            remainder = len(auc_values) % actual_num_bins
-            
-            # Assign new labels based on sorted indices
-            new_labels = np.zeros_like(labels)
-            start_idx = 0
-            for i in range(actual_num_bins):
-                # Give an extra cell to first 'remainder' clusters if division isn't even
-                cluster_size = cells_per_cluster + (1 if i < remainder else 0)
-                end_idx = start_idx + cluster_size
-                new_labels[sorted_indices[start_idx:end_idx]] = i
-                start_idx = end_idx
-            
-            # Replace original labels with new forced distribution
-            labels = new_labels
-            
-            # Recalculate cluster means
-            cluster_means = {}
-            for label in range(actual_num_bins):
-                cluster_values = auc_values[labels == label]
-                cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
-    else:
-        # Default: Gaussian Mixture Model with improved parameters
+    elif method.lower() == 'gmm':
+        # Gaussian Mixture Model with improved parameters
         gmm = GaussianMixture(
             n_components=actual_num_bins, 
             random_state=0,
@@ -353,60 +361,90 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
         # If all cells are in one cluster or forcing clusters and some clusters are empty
         if len(unique_labels) == 1 or (force_clusters and len(unique_labels) < actual_num_bins):
             logger.warning(f"GMM only found {len(unique_labels)} clusters but {actual_num_bins} were requested. "
-                           f"Trying K-means as fallback method.")
+                           f"Falling back to K-means.")
             
-            # Try K-means clustering as fallback
-            kmeans = KMeans(
-                n_clusters=actual_num_bins, 
-                random_state=0, 
-                n_init=10,
-                max_iter=300,
-            )
-            # Use the log-transformed values for better clustering
-            labels = kmeans.fit_predict(auc_values_log)
+            # Fall back to K-means clustering
+            method = 'kmeans'  # Set method to kmeans to use the kmeans code path
+    
+    # Default: Use K-means clustering (either as primary method or as fallback from GMM)
+    if method.lower() == 'kmeans':
+        # Use K-means clustering with multiple initializations and iterations for robustness
+        kmeans = KMeans(
+            n_clusters=actual_num_bins, 
+            random_state=0, 
+            n_init=10,  # Multiple initializations to avoid bad starting conditions
+            max_iter=300,  # More iterations to ensure convergence
+        )
+        # Use the log-transformed values for better clustering with wide dynamic ranges
+        labels = kmeans.fit_predict(auc_values_log)
+        
+        # Get cluster centers for sorting
+        centers = kmeans.cluster_centers_.flatten()
+        # Get unique labels actually assigned (in case some clusters are empty)
+        unique_labels = np.unique(labels)
+        cluster_means = {label: centers[label] for label in unique_labels}
+        
+        # Print cluster sizes to diagnose distribution
+        for label in unique_labels:
+            count = np.sum(labels == label)
+            logger.info(f"K-means cluster {label} has {count} cells ({count/len(labels)*100:.1f}%)")
+        
+        # If forcing clusters and some clusters are empty
+        if force_clusters and len(unique_labels) < actual_num_bins:
+            logger.warning(f"K-means only found {len(unique_labels)} clusters but {actual_num_bins} were requested. "
+                           f"Redistributing data to force {actual_num_bins} clusters.")
             
-            # Check if K-means found the right number of clusters
-            kmeans_unique_labels = np.unique(labels)
+            # Force redistribution by manually assigning to n clusters
+            # Sort data by intensity
+            sorted_indices = np.argsort(auc_values.flatten())
+            # Calculate number of cells per cluster for even distribution
+            cells_per_cluster = len(auc_values) // actual_num_bins
+            remainder = len(auc_values) % actual_num_bins
             
-            if len(kmeans_unique_labels) == actual_num_bins:
-                logger.info(f"K-means successfully found {actual_num_bins} clusters.")
-                
-                # Get cluster centers for sorting
-                centers = kmeans.cluster_centers_.flatten()
-                # Recalculate cluster means using original values
-                cluster_means = {}
-                for label in kmeans_unique_labels:
-                    cluster_values = auc_values[labels == label]
-                    cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
-                    
-                # Print cluster sizes
-                for label in kmeans_unique_labels:
-                    count = np.sum(labels == label)
-                    logger.info(f"K-means cluster {label} has {count} cells ({count/len(labels)*100:.1f}%)")
-            else:
-                logger.warning(f"K-means also failed to find {actual_num_bins} clusters (found {len(kmeans_unique_labels)}). "
-                               f"Falling back to quantile-based binning.")
-                
-                # Fall back to quantile-based binning as last resort
-                sorted_indices = np.argsort(auc_values.flatten())
-                cells_per_cluster = len(auc_values) // actual_num_bins
-                remainder = len(auc_values) % actual_num_bins
-                
-                new_labels = np.zeros_like(labels)
-                start_idx = 0
-                for i in range(actual_num_bins):
-                    cluster_size = cells_per_cluster + (1 if i < remainder else 0)
-                    end_idx = start_idx + cluster_size
-                    new_labels[sorted_indices[start_idx:end_idx]] = i
-                    start_idx = end_idx
-                
-                labels = new_labels
-                
-                # Recalculate cluster means
-                cluster_means = {}
-                for label in range(actual_num_bins):
-                    cluster_values = auc_values[labels == label]
-                    cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+            # Assign new labels based on sorted indices
+            new_labels = np.zeros_like(labels)
+            start_idx = 0
+            for i in range(actual_num_bins):
+                # Give an extra cell to first 'remainder' clusters if division isn't even
+                cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+                end_idx = start_idx + cluster_size
+                new_labels[sorted_indices[start_idx:end_idx]] = i
+                start_idx = end_idx
+            
+            # Replace original labels with new forced distribution
+            labels = new_labels
+            
+            # Recalculate cluster means
+            cluster_means = {}
+            for label in range(actual_num_bins):
+                cluster_values = auc_values[labels == label]
+                cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+        
+        # If K-means doesn't find the right number of clusters (which shouldn't happen in practice)
+        if len(unique_labels) < actual_num_bins:
+            logger.warning(f"K-means failed to find {actual_num_bins} clusters (found {len(unique_labels)}). "
+                           f"Falling back to quantile-based binning.")
+            
+            # Fall back to quantile-based binning as last resort
+            sorted_indices = np.argsort(auc_values.flatten())
+            cells_per_cluster = len(auc_values) // actual_num_bins
+            remainder = len(auc_values) % actual_num_bins
+            
+            new_labels = np.zeros_like(labels)
+            start_idx = 0
+            for i in range(actual_num_bins):
+                cluster_size = cells_per_cluster + (1 if i < remainder else 0)
+                end_idx = start_idx + cluster_size
+                new_labels[sorted_indices[start_idx:end_idx]] = i
+                start_idx = end_idx
+            
+            labels = new_labels
+            
+            # Recalculate cluster means
+            cluster_means = {}
+            for label in range(actual_num_bins):
+                cluster_values = auc_values[labels == label]
+                cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
     
     # Sort clusters by mean intensity for consistent binning
     sorted_clusters = sorted(cluster_means, key=lambda k: cluster_means[k])
@@ -417,7 +455,7 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
     cell_counts = [0] * actual_num_bins
     
     # Group images using the mapped labels and sum them
-    for idx, (filename, auc_value, img) in enumerate(image_data):
+    for idx, (filename, auc_value, img, metadata) in enumerate(image_data):
         original_label = labels[idx]
         # Only use label mapping if we have the original label in the mapping
         if original_label in label_mapping:
@@ -447,8 +485,49 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
         
         # Remove the cell count from the filename to ensure files get overwritten when rerunning with more bins
         output_file = output_subdir / f"{cell_dir.name}_bin_{i+1}.tif"
-        cv2.imwrite(str(output_file), norm_img)
-        logger.info(f"Saved summed image for group {i+1} with {cell_counts[i]} cells: {output_file}")
+        
+        # Use tifffile to save with metadata if available
+        if HAVE_TIFFFILE and reference_metadata is not None:
+            try:
+                # Prepare metadata dictionary
+                metadata_dict = {}
+                
+                # Try to use the original resolution metadata
+                if reference_metadata:
+                    # Check for ImageJ tags
+                    if 'unit' in reference_metadata and 'resolution' in reference_metadata:
+                        # These are common ImageJ metadata for units and scale
+                        resolution = reference_metadata.get('resolution', 1.0)
+                        unit = reference_metadata.get('unit', 'µm')
+                        metadata_dict['resolution'] = resolution
+                        metadata_dict['unit'] = unit
+                        logger.info(f"Using ImageJ scale information: {resolution} pixels/{unit}")
+                    
+                    # Standard TIFF resolution tags
+                    if 'XResolution' in reference_metadata and 'YResolution' in reference_metadata:
+                        metadata_dict['XResolution'] = reference_metadata['XResolution']
+                        metadata_dict['YResolution'] = reference_metadata['YResolution']
+                        if 'ResolutionUnit' in reference_metadata:
+                            metadata_dict['ResolutionUnit'] = reference_metadata['ResolutionUnit']
+                
+                # Save with metadata
+                tifffile.imwrite(
+                    str(output_file), 
+                    norm_img, 
+                    imagej=True,  # Use ImageJ format
+                    resolution=(metadata_dict.get('XResolution'), metadata_dict.get('YResolution')),
+                    metadata={'unit': 'um'}  # Using 'um' instead of 'µm' to avoid encoding issues
+                )
+                logger.info(f"Saved summed image with metadata for group {i+1} with {cell_counts[i]} cells: {output_file}")
+            except Exception as e:
+                logger.warning(f"Failed to save with tifffile, falling back to OpenCV: {e}")
+                cv2.imwrite(str(output_file), norm_img)
+        else:
+            # Fallback to OpenCV (doesn't preserve scale/units)
+            cv2.imwrite(str(output_file), norm_img)
+            logger.info(f"Saved summed image for group {i+1} with {cell_counts[i]} cells: {output_file}")
+            if not HAVE_TIFFFILE:
+                logger.warning("tifffile library not available - scale information not preserved. Install with: pip install tifffile")
     
     # Save a text file with information about the grouping
     with open(output_subdir / f"{cell_dir.name}_grouping_info.txt", 'w') as f:
@@ -481,14 +560,21 @@ def main():
                         help='Directory to save grouped cell images')
     parser.add_argument('--bins', '-b', type=int, default=3,
                         help='Number of groups to cluster cells into (default: 3)')
-    parser.add_argument('--clustering-method', '-m', choices=['gmm', 'kmeans'], default='gmm',
-                        help='Method to use for clustering (default: gmm)')
+    parser.add_argument('--clustering-method', '-m', choices=['gmm', 'kmeans'], default='kmeans',
+                        help='Method to use for clustering (default: kmeans)')
     parser.add_argument('--force-clusters', '-f', action='store_true',
                         help='Force creation of exactly --bins clusters, even with similar data')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Print verbose diagnostic information')
+    parser.add_argument('--preserve-scale', action='store_true',
+                        help='Ensure scale information is preserved in output TIFFs (requires tifffile)')
     
     args = parser.parse_args()
+    
+    # Check for tifffile if preserve-scale is requested
+    if args.preserve_scale and not HAVE_TIFFFILE:
+        logger.warning("tifffile library not available but --preserve-scale was requested.")
+        logger.warning("Scale information may not be preserved. Install with: pip install tifffile")
     
     cells_dir = Path(args.cells_dir)
     output_dir = Path(args.output_dir)
