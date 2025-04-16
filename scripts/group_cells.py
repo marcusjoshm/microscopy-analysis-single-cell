@@ -558,8 +558,8 @@ def main():
                         help='Directory containing cell images (output from extract_cells.py)')
     parser.add_argument('--output-dir', '-o', required=True,
                         help='Directory to save grouped cell images')
-    parser.add_argument('--bins', '-b', type=int, default=3,
-                        help='Number of groups to cluster cells into (default: 3)')
+    parser.add_argument('--bins', '-b', type=int, default=5,
+                        help='Number of groups to cluster cells into (default: 5)')
     parser.add_argument('--clustering-method', '-m', choices=['gmm', 'kmeans'], default='kmeans',
                         help='Method to use for clustering (default: kmeans)')
     parser.add_argument('--force-clusters', '-f', action='store_true',

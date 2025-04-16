@@ -74,133 +74,9 @@ if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 dishDirs = getFileList(cellsDir);
 print("Found dish directories: " + joinArray(dishDirs, ", "));
 
-// First, open all images for preview - collect file paths into an array
-allImagePaths = newArray();
-allImageInfo = newArray(); // Store condition/region info for each image
-
-for (d = 0; d < dishDirs.length; d++) {
-    dishName = dishDirs[d];
-    
-    // Skip non-directories and hidden files
-    if (endsWith(dishName, ".tif") || startsWith(dishName, ".")) {
-        continue;
-    }
-    
-    dishPath = cellsDir + dishName;
-    // Ensure trailing slash
-    if (!endsWith(dishPath, "/")) dishPath = dishPath + "/";
-    
-    print("Scanning dish: " + dishPath);
-    
-    // Get list of region/timepoint subdirectories within the dish folder
-    timeDirs = getFileList(dishPath);
-    if (timeDirs.length == 0) {
-        print("No subdirectories found in " + dishName);
-        continue;
-    }
-    
-    for (t = 0; t < timeDirs.length; t++) {
-        timeName = timeDirs[t];
-        
-        // Skip non-directories and hidden files
-        if (endsWith(timeName, ".tif") || startsWith(timeName, ".")) {
-            continue;
-        }
-        
-        timePath = dishPath + timeName;
-        // Ensure trailing slash
-        if (!endsWith(timePath, "/")) timePath = timePath + "/";
-        
-        // Get list of files in the time folder
-        files = getFileList(timePath);
-        if (files.length == 0) {
-            print("No files found in " + timeName);
-            continue;
-        }
-        
-        for (f = 0; f < files.length; f++) {
-            fileName = files[f];
-            
-            // Process only TIFF files
-            if (endsWith(fileName, ".tif")) {
-                imagePath = timePath + fileName;
-                // Add this image path to our array
-                allImagePaths = Array.concat(allImagePaths, imagePath);
-                // Store the condition/region info
-                allImageInfo = Array.concat(allImageInfo, dishName + " - " + timeName + " - " + fileName);
-            }
-        }
-    }
-}
-
-// Open all images for preview, but show confirmation if there are many
-if (allImagePaths.length > 10) {
-    Dialog.create("Large Number of Images");
-    Dialog.addMessage("There are " + allImagePaths.length + " grouped cell images to preview.");
-    Dialog.addMessage("Opening a large number of images simultaneously may cause memory issues.");
-    Dialog.addChoice("How to proceed:", newArray("Open all images", "Open first 10 images only"));
-    Dialog.show();
-    
-    userChoice = Dialog.getChoice();
-    if (userChoice == "Open first 10 images only") {
-        numToOpen = 10;
-    } else {
-        numToOpen = allImagePaths.length;
-    }
-} else {
-    numToOpen = allImagePaths.length;
-}
-
-if (numToOpen == 0) {
-    showMessage("No Images Found", "No images were found to threshold in the specified directory.");
-    eval("script", "System.exit(1);");
-}
-
-// Open the preview images
-previewWindows = newArray(numToOpen);
-for (i = 0; i < numToOpen; i++) {
-    open(allImagePaths[i]);
-    previewWindows[i] = getTitle();
-    
-    // Enhance contrast for better viewing
-    run("Enhance Contrast...", "saturated=0.01");
-    
-    // Add image info as an overlay
-    setFont("SansSerif", 14, "bold");
-    makeText(allImageInfo[i], 10, 30);
-    run("Add Selection...", "stroke=yellow fill=#99000000");
-    run("Select None");
-    
-    // Tile windows after opening 10 or all (if less than 10)
-    if (i == numToOpen - 1 || (i + 1) % 10 == 0) {
-        run("Tile");
-    }
-}
-
-// Ask user to evaluate if the current grouping is sufficient
-// Show dialog with image summary
-Dialog.create("Evaluate Cell Grouping");
-Dialog.addMessage("Please review the opened images to evaluate if the current cell grouping is sufficient.");
-Dialog.addMessage("Showing " + numToOpen + " of " + allImagePaths.length + " images.");
-Dialog.addMessage("Do you want to proceed with thresholding these grouped cells,");
-Dialog.addMessage("or would you like to go back and create more bins for better separation?");
-Dialog.addChoice("Decision:", newArray("Proceed with thresholding", "Need more bins for better separation"));
-Dialog.show();
-
-userDecision = Dialog.getChoice();
-
-// Close all preview windows at once
-run("Close All");
-
-// If user wants more bins, create flag file and exit
-if (userDecision == "Need more bins for better separation") {
-    File.saveString("User requested more bins for better cell grouping", flagFile);
-    showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
-    eval("script", "System.exit(0);");
-}
-
-// If we're here, user wants to proceed with thresholding
-showMessage("Proceeding with Thresholding", "The current grouping is acceptable. We will now begin thresholding these images.");
+// Skip initial image preview - proceed directly to thresholding
+// Start processing each image directly
+print("Proceeding directly to thresholding without preview.");
 
 // Process each image for thresholding
 for (d = 0; d < dishDirs.length; d++) {
@@ -282,6 +158,22 @@ for (d = 0; d < dishDirs.length; d++) {
                         print("No ROI drawn, using the entire image for thresholding.");
                         run("Select All");
                     }
+                }
+                
+                // After ROI selection but before thresholding, ask if more bins are needed
+                Dialog.create("Evaluate Cell Grouping");
+                Dialog.addMessage("Based on what you see in this image, do you want to:");
+                Dialog.addChoice("Decision:", newArray("Continue with thresholding", "Go back and add one more group"));
+                Dialog.show();
+                
+                userBinsDecision = Dialog.getChoice();
+                
+                // If user wants more bins, create flag file and exit
+                if (userBinsDecision == "Go back and add one more group") {
+                    File.saveString("User requested more bins for better cell grouping", flagFile);
+                    showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
+                    run("Close All");
+                    eval("script", "System.exit(0);");
                 }
                 
                 // Apply Otsu thresholding directly
