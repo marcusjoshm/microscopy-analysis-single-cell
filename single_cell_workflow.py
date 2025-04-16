@@ -34,7 +34,7 @@ class WorkflowOrchestrator:
                  conditions: Optional[List[str]] = None, 
                  channels: Optional[List[str]] = None, 
                  timepoints=None, regions=None, setup_only=False,
-                 start_from: Optional[str] = None, bins: int = 3):
+                 start_from: Optional[str] = None, bins: int = 5):
         """
         Initialize the workflow orchestrator.
         
@@ -50,7 +50,7 @@ class WorkflowOrchestrator:
             regions (list): List of regions to analyze (e.g., ["R_1", "R_2", "R_3"]).
             setup_only (bool): Flag to indicate if only directory setup should be performed.
             start_from (str): Step name to start the workflow from (optional).
-            bins (int): Number of bins for grouping cells (default: 3).
+            bins (int): Number of bins for grouping cells (default: 5).
         """
         self.config_path = config_path
         self.input_dir = Path(input_dir).resolve()
@@ -1153,8 +1153,8 @@ def main():
                         help='Specific timepoints to analyze (e.g., t00 t03)')
     parser.add_argument('--regions', '-r', nargs='+', default=[],
                         help='Specific regions to analyze (e.g., R_1 R_2 R_3)')
-    parser.add_argument('--bins', type=int, default=3,
-                        help='Number of bins for grouping cells (default: 3)')
+    parser.add_argument('--bins', type=int, default=5,
+                        help='Number of bins for grouping cells (default: 5)')
     parser.add_argument('--setup-only', action='store_true',
                         help='Only set up directory structure, do not run the workflow')
     parser.add_argument('--start-from', type=str,
