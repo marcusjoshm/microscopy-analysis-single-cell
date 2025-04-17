@@ -16,6 +16,12 @@ import logging
 import numpy as np
 from pathlib import Path
 import cv2
+try:
+    # Import tifffile for preserving metadata when writing TIFF files
+    import tifffile
+    HAVE_TIFFFILE = True
+except ImportError:
+    HAVE_TIFFFILE = False
 
 # Set up logging
 logging.basicConfig(
@@ -80,6 +86,55 @@ def find_mask_groups(mask_dir):
     
     return mask_groups
 
+def read_image_with_metadata(image_path):
+    """
+    Read an image file with its metadata if available.
+    
+    Args:
+        image_path (str): Path to the image file
+        
+    Returns:
+        tuple: The loaded image and metadata if available, or (image, None) if not
+    """
+    metadata = None
+    
+    # Try tifffile first if available (best for metadata preservation)
+    if HAVE_TIFFFILE:
+        try:
+            with tifffile.TiffFile(image_path) as tif:
+                img = tif.asarray()
+                # Try to extract resolution information
+                if hasattr(tif, 'pages') and len(tif.pages) > 0:
+                    page = tif.pages[0]
+                    if hasattr(page, 'tags'):
+                        # Extract resolution information if available
+                        metadata = {}
+                        if 'XResolution' in page.tags:
+                            metadata['XResolution'] = page.tags['XResolution'].value
+                        if 'YResolution' in page.tags:
+                            metadata['YResolution'] = page.tags['YResolution'].value
+                        if 'ResolutionUnit' in page.tags:
+                            metadata['ResolutionUnit'] = page.tags['ResolutionUnit'].value
+                        # Also check for ImageJ metadata
+                        if hasattr(page, 'imagej_tags') and page.imagej_tags:
+                            metadata.update(page.imagej_tags)
+                
+                return img, metadata
+        except Exception as e:
+            logger.warning(f"tifffile failed to read {image_path}: {e}")
+    
+    # Fallback to OpenCV
+    try:
+        img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+        if img is not None:
+            return img, None
+        else:
+            logger.warning(f"OpenCV failed to read {image_path}")
+            return None, None
+    except Exception as e:
+        logger.warning(f"OpenCV error reading {image_path}: {e}")
+        return None, None
+
 def combine_masks(mask_dir, output_dir):
     """
     Combine masks for each group in the mask directory.
@@ -118,22 +173,35 @@ def combine_masks(mask_dir, output_dir):
                 logger.warning(f"No mask files found for group {prefix}")
                 continue
             
+            # Initialize reference metadata from the first mask
+            reference_metadata = None
+            
             # Initialize combined mask with zeros
-            first_mask = cv2.imread(str(mask_files[0]), cv2.IMREAD_UNCHANGED)
+            first_mask, first_metadata = read_image_with_metadata(str(mask_files[0]))
             if first_mask is None:
                 logger.error(f"Unable to read {mask_files[0]}. Skipping group {prefix}.")
                 continue
+            
+            # Store metadata from the first mask if available
+            if first_metadata is not None:
+                reference_metadata = first_metadata
+                logger.info(f"Found metadata in first mask: {reference_metadata}")
                 
             # Initialize combined mask
             combined_mask = np.zeros_like(first_mask, dtype=np.uint8)
             
             # Combine all masks
             for mask_file in mask_files:
-                # Read image
-                mask = cv2.imread(str(mask_file), cv2.IMREAD_UNCHANGED)
+                # Read image with metadata
+                mask, metadata = read_image_with_metadata(str(mask_file))
                 if mask is None:
                     logger.warning(f"Unable to read {mask_file}. Skipping.")
                     continue
+                
+                # If we don't have metadata yet, use this one if available
+                if reference_metadata is None and metadata is not None:
+                    reference_metadata = metadata
+                    logger.info(f"Using metadata from {mask_file}")
                 
                 # Binary masks have values 0 or 255, so when we add them together,
                 # all pixels that were 255 in any mask will be at least 255 in the sum
@@ -143,9 +211,50 @@ def combine_masks(mask_dir, output_dir):
             output_filename = f"{prefix}.tif"
             output_path = output_condition_dir / output_filename
             
-            # Save the combined mask
-            cv2.imwrite(str(output_path), combined_mask)
-            logger.info(f"Saved combined mask to {output_path}")
+            # Save the combined mask with metadata if available
+            if HAVE_TIFFFILE and reference_metadata is not None:
+                try:
+                    # Try to save with tifffile to preserve metadata
+                    # Prepare metadata dictionary
+                    metadata_dict = {}
+                    
+                    # Try to use the original resolution metadata
+                    if reference_metadata:
+                        # Check for ImageJ tags
+                        if 'unit' in reference_metadata and 'resolution' in reference_metadata:
+                            # These are common ImageJ metadata for units and scale
+                            resolution = reference_metadata.get('resolution', 1.0)
+                            unit = reference_metadata.get('unit', 'um')
+                            metadata_dict['resolution'] = resolution
+                            metadata_dict['unit'] = unit
+                            logger.info(f"Using ImageJ scale information: {resolution} pixels/{unit}")
+                        
+                        # Standard TIFF resolution tags
+                        if 'XResolution' in reference_metadata and 'YResolution' in reference_metadata:
+                            metadata_dict['XResolution'] = reference_metadata['XResolution']
+                            metadata_dict['YResolution'] = reference_metadata['YResolution']
+                            if 'ResolutionUnit' in reference_metadata:
+                                metadata_dict['ResolutionUnit'] = reference_metadata['ResolutionUnit']
+                    
+                    # Save with metadata
+                    tifffile.imwrite(
+                        str(output_path), 
+                        combined_mask, 
+                        imagej=True,  # Use ImageJ format
+                        resolution=(metadata_dict.get('XResolution'), metadata_dict.get('YResolution')),
+                        metadata={'unit': 'um'}  # Using 'um' instead of 'µm' to avoid encoding issues
+                    )
+                    logger.info(f"Saved combined mask with metadata to {output_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to save with tifffile, falling back to OpenCV: {e}")
+                    cv2.imwrite(str(output_path), combined_mask)
+                    logger.info(f"Saved combined mask to {output_path} (without metadata)")
+            else:
+                # Use OpenCV as fallback
+                cv2.imwrite(str(output_path), combined_mask)
+                if not HAVE_TIFFFILE:
+                    logger.warning("tifffile library not available - scale information not preserved. Install with: pip install tifffile")
+                logger.info(f"Saved combined mask to {output_path}")
             
         return True
     

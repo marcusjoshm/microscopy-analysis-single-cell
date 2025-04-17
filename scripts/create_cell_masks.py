@@ -17,6 +17,7 @@ import logging
 import re
 import glob
 from pathlib import Path
+import time
 
 # Set up logging
 logging.basicConfig(
@@ -84,7 +85,7 @@ def create_macro_file(roi_dir, mask_dir, output_dir, auto_close=False):
     for mask_file in mask_files[:5]:
         logger.info(f"Mask file: {mask_file}")
     
-    # Generate the macro content
+    # Generate the macro content - SIMPLIFIED VERSION
     macro_content = f"""// ----- Helper Functions -----
 function startsWith(str, prefix) {{
     result = substring(str, 0, lengthOf(prefix));
@@ -146,7 +147,7 @@ for (d = 0; d < dishes.length; d++) {{
         
         for (r = 0; r < roiFiles.length; r++) {{
             fileName = roiFiles[r];
-            print("Checking ROI file: " + fileName);
+            print("PROCESSING ROI file: " + fileName);
             
             // Process all zip files that might contain ROIs
             if (!endsWith(fileName, "_rois.zip") && !endsWith(fileName, ".zip")) {{
@@ -154,178 +155,140 @@ for (d = 0; d < dishes.length; d++) {{
                 continue;
             }}
             
-            // Derive the base name - we'll support both ROIs_R_ prefix and ROIs_ prefix
-            baseName = "";
-            if (startsWith(fileName, "ROIs_R_")) {{
-                baseName = substring(fileName, lengthOf("ROIs_R_"), indexOf(fileName, "_rois.zip"));
-                print("Extracted base name from ROIs_R_ format: " + baseName);
-            }} else if (startsWith(fileName, "ROIs_")) {{
-                baseName = substring(fileName, lengthOf("ROIs_"), indexOf(fileName, "_rois.zip"));
-                print("Extracted base name from ROIs_ format: " + baseName);
-            }} else {{
-                // Try to extract any useful part from the filename
-                if (endsWith(fileName, "_rois.zip")) {{
-                    baseName = substring(fileName, 0, indexOf(fileName, "_rois.zip"));
-                    print("Extracted base name from generic _rois.zip format: " + baseName);
-                }} else if (endsWith(fileName, ".zip")) {{
-                    baseName = substring(fileName, 0, indexOf(fileName, ".zip"));
-                    print("Extracted base name from generic .zip format: " + baseName);
-                }}
-            }}
-            
-            if (baseName == "") {{
-                print("Could not extract base name from: " + fileName);
-                continue;
-            }}
-            
-            // Extract region in a more flexible way
-            print("DEBUG - Analyzing for region: " + baseName);
+            // IMPROVED REGION EXTRACTION - Handle "Merged" pattern in filenames
             region = "";
+            timepoint = "t00";  // Default to t00
             
-            // First try special patterns for your specific naming
-            if (indexOf(baseName, "50min_Washout") >= 0) {{
-                region = "50min_Washout";
-                print("DEBUG - Matched 50min_Washout region pattern");
-            }} else if (indexOf(baseName, "TS1_50min") >= 0) {{
-                region = "TS1_50min";
-                print("DEBUG - Matched TS1_50min region pattern");
-            }} else if (indexOf(baseName, "TS2_50min") >= 0) {{
-                region = "TS2_50min";
-                print("DEBUG - Matched TS2_50min region pattern");
-            }} 
-            // Then fall back to standard R_N patterns
-            else if (indexOf(baseName, "R_1") >= 0) {{
-                region = "R_1";
-                print("DEBUG - Matched R_1 region pattern");
-            }} else if (indexOf(baseName, "R_2") >= 0) {{
-                region = "R_2";
-                print("DEBUG - Matched R_2 region pattern");
-            }} else if (indexOf(baseName, "R_3") >= 0) {{
-                region = "R_3";
-                print("DEBUG - Matched R_3 region pattern");
-            }} else if (indexOf(baseName, "R_4") >= 0) {{
-                region = "R_4";
-                print("DEBUG - Matched R_4 region pattern");
+            // Handle ROI filenames with format: ROIs_R_1_Merged_t00_ch01_rois.zip
+            if (startsWith(fileName, "ROIs_R_")) {{
+                // Extract just the region number more reliably
+                parts = split(fileName, "_");
+                if (parts.length >= 3) {{
+                    // Get the number after "R_"
+                    regionNum = parts[2];
+                    // Final region should be "R_1", "R_2", etc.
+                    region = "R_" + regionNum;
+                    print("Extracted region: " + region);
+                    
+                    // Try to extract timepoint from filename
+                    for (p = 0; p < parts.length; p++) {{
+                        if (startsWith(parts[p], "t") && lengthOf(parts[p]) >= 3) {{
+                            timepoint = parts[p];
+                            break;
+                        }}
+                    }}
+                }} else {{
+                    print("ERROR: Could not parse ROI filename: " + fileName);
+                    continue;
+                }}
+                
+                print("Using timepoint: " + timepoint);
             }} else {{
-                // If no pattern is found, use the whole baseName
-                region = baseName;
-                print("DEBUG - No specific region pattern matched, using full base name: " + baseName);
+                print("WARNING: Unknown ROI naming format: " + fileName);
+                continue;
             }}
             
             if (region == "") {{
-                print("Region not found in: " + baseName);
+                print("ERROR: Could not extract region from filename: " + fileName);
                 continue;
             }}
             
-            print("Identified region: " + region);
-            
-            // Extract timepoint from the base name with more flexibility
-            print("DEBUG - Analyzing for timepoint in: " + baseName);
-            timepoint = "";
-            
-            if (indexOf(baseName, "t00") >= 0) {{
-                timepoint = "t00";
-                print("DEBUG - Matched t00 timepoint in filename");
-            }} else if (indexOf(baseName, "t03") >= 0) {{
-                timepoint = "t03";
-                print("DEBUG - Matched t03 timepoint in filename");
-            }} else if (indexOf(baseName, "t06") >= 0) {{
-                timepoint = "t06";
-                print("DEBUG - Matched t06 timepoint in filename");
-            }} else {{
-                // If not found in filename, assume t00 (most common case)
-                print("DEBUG - No specific timepoint pattern in filename, defaulting to t00");
-                timepoint = "t00";
+            // Ensure region format is correct (should be "R_1", "R_2", etc.)
+            if (!startsWith(region, "R_")) {{
+                print("WARNING: Adding R_ prefix to region: " + region);
+                region = "R_" + region;
             }}
             
-            timeLabel = timepoint;
-            print("Using timepoint: " + timepoint + " -> time label: " + timeLabel);
-            
-            // Build the mask image filename - be flexible with naming
-            // First try standard format
-            maskFileName = "MASK_" + region + "_" + timeLabel + ".tif";
+            // Build the mask image filename
+            maskFileName = "MASK_" + region + "_" + timepoint + ".tif";
             maskFilePath = maskFolder + maskFileName;
             
-            // If that doesn't exist, try other variations
-            if (!File.exists(maskFilePath)) {{
-                print("Standard mask filename not found: " + maskFilePath);
-                print("Looking for alternative mask file patterns...");
-                
-                // List all mask files and find one that contains both region and timepoint
-                maskFiles = getFileList(maskFolder);
-                for (m = 0; m < maskFiles.length; m++) {{
-                    candidateFile = maskFiles[m];
-                    print("Checking mask file: " + candidateFile);
-                    
-                    // Check if this file contains our region and timepoint parts
-                    if (startsWith(candidateFile, "MASK_") && 
-                        ((indexOf(candidateFile, region) >= 0 && indexOf(candidateFile, timeLabel) >= 0) ||
-                         (indexOf(candidateFile, region) >= 0 && timeLabel == "t00"))) {{
-                        
-                        maskFilePath = maskFolder + candidateFile;
-                        print("Found matching mask file: " + maskFilePath);
-                        break;
-                    }}
-                }}
-            }}
+            print("Looking for mask file: " + maskFilePath);
             
             if (!File.exists(maskFilePath)) {{
-                print("ERROR: No suitable mask file found for region " + region + " and timepoint " + timepoint);
+                print("ERROR: Mask file not found: " + maskFilePath);
                 continue;
+            }} else {{
+                print("CONFIRMED: Found mask file: " + maskFilePath);
             }}
             
-            // Load the ROIs silently without using the ROI Manager GUI
+            // Load the ROIs
             roiFilePath = roiFolder + fileName;
             print("Loading ROI file: " + roiFilePath);
             roiManager("reset");
             roiManager("open", roiFilePath);
             
-            // Count ROIs by getting the number from the "count" property
+            // Count ROIs
             nRois = roiManager("count");
-            print("Processing " + dishName + " " + region + " " + timeLabel + ": Found " + nRois + " ROIs.");
+            print("Found " + nRois + " ROIs in file: " + roiFilePath);
             
-            // Open the corresponding combined mask image
+            if (nRois == 0) {{
+                print("ERROR: No ROIs found in file: " + roiFilePath);
+                continue;
+            }}
+            
+            // Open the mask image
             print("Opening mask image: " + maskFilePath);
             open(maskFilePath);
+            
+            if (nImages == 0) {{
+                print("ERROR: Failed to open mask image: " + maskFilePath);
+                continue;
+            }}
+            
             maskTitle = getTitle();
             print("Opened mask image: " + maskTitle);
             
-            // Set up the output folder for processed MASK_CELLs.
-            outputFolder = outputParent + dishName + "/" + region + "_" + timeLabel + "/";
-            print("Output folder for cell masks: " + outputFolder);
+            // Create output folder
+            outputFolder = outputParent + dishName + "/" + region + "_" + timepoint + "/";
+            print("Output folder: " + outputFolder);
             if (!File.exists(outputFolder)) {{
                 print("Creating output directory: " + outputFolder);
                 File.makeDirectory(outputFolder);
             }}
             
-            // Loop over each ROI in the ROI Manager.
+            // Process each ROI - SIMPLIFIED VERSION
             for (i = 0; i < nRois; i++) {{
-                // Duplicate the mask image so the original remains unaltered.
-                selectWindow(maskTitle);
-                run("Duplicate...", "title=TempMask");
+                print("Processing ROI " + (i+1) + " of " + nRois);
                 
-                // Apply the ROI (from the ROI Manager) to the duplicate.
+                // Duplicate image
+                selectWindow(maskTitle);
+                run("Duplicate...", "title=TempMask duplicate");
+                
+                // Apply ROI
                 roiManager("select", i);
+                
+                // Process all slices
                 nslices = nSlices();
                 for (s = 1; s <= nslices; s++) {{
                     setSlice(s);
                     run("Clear Outside");
-                    run("Set Scale...", "distance=13.6891 known=1 unit=µm");
                 }}
                 
-                // Build the save path and filename.
+                // Save the cell mask
                 MASK_CELLNum = i + 1;
                 savePath = outputFolder + "MASK_CELL" + MASK_CELLNum + ".tiff";
-                saveAs("Tiff", savePath);
-                print("Saved MASK_CELL: " + savePath);
+                print("Saving to: " + savePath);
                 
-                // Close the duplicate image.
+                // Use simple saveAs to preserve metadata
+                saveAs("Tiff", savePath);
+                
+                // Verify save
+                if (File.exists(savePath)) {{
+                    print("SUCCESS: Saved " + savePath);
+                }} else {{
+                    print("ERROR: Failed to save " + savePath);
+                }}
+                
+                // Close the duplicate
                 close();
             }}
             
-            // Close the original mask image and reset ROI Manager.
-            selectWindow(maskTitle);
-            close();
+            // Close the original and reset
+            if (isOpen(maskTitle)) {{
+                selectWindow(maskTitle);
+                close();
+            }}
             roiManager("reset");
         }}
     }}
@@ -372,8 +335,8 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False):
             logger.error(f"Macro file not found at: {macro_file_absolute}")
             return False
         
-        # Use the --run flag with a specific argument format to run the macro without showing a dialog
-        cmd = [imagej_path, "--ij2", "--console", "--run", macro_file_absolute]
+        # Use the -batch flag for headless operation
+        cmd = [imagej_path, "-batch", macro_file_absolute]
         
         logger.info(f"Running ImageJ command: {cmd}")
         logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
@@ -400,19 +363,23 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False):
         # Check if the command executed successfully
         if result.returncode != 0:
             logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
-            return False
+            if "SUCCESS: Saved" not in result.stdout and "Saved MASK_CELL:" not in result.stdout:
+                return False
         
-        # Verify if any files were created
+        # Verify if any files were created - look for evidence in the output
         success = False
         
         # Parse output to check for created files
         for line in result.stdout.splitlines():
-            if "Saved MASK_CELL:" in line:
+            if "Saved MASK_CELL:" in line or "SUCCESS: Saved" in line:
                 success = True
                 break
         
         if not success:
             logger.warning("No MASK_CELL files were created according to the ImageJ output")
+            
+        # Allow filesystem to sync (sometimes needed for network drives)
+        time.sleep(5)  # Increase delay to 5 seconds to ensure files are fully written
             
         return True
     except Exception as e:
