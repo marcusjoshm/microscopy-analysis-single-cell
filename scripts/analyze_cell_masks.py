@@ -19,6 +19,7 @@ import glob
 import time
 import re
 import csv
+import pandas as pd
 
 # Set up logging
 logging.basicConfig(
@@ -438,10 +439,108 @@ def main():
     # Report overall results
     if success_count > 0:
         logger.info(f"Cell mask analysis completed successfully: {success_count}/{total_dirs} directories processed")
+        
+        # Combine all CSV files into a single summary
+        if success_count > 1:
+            combine_csv_files(args.output)
+        
         return 0
     else:
         logger.error("Cell mask analysis failed - no successful directories processed")
         return 1
 
+def combine_csv_files(output_dir):
+    """
+    Combine all CSV summary files in the output directory into a single consolidated file.
+    
+    Args:
+        output_dir (str): Directory containing individual CSV summary files
+    
+    Returns:
+        str: Path to the combined CSV file, or None if no files were found/combined
+    """
+    # Find all CSV files in the output directory
+    csv_pattern = os.path.join(output_dir, '*_summary.csv')
+    csv_files = glob.glob(csv_pattern)
+    
+    if not csv_files:
+        logger.warning(f"No CSV summary files found in {output_dir} to combine")
+        return None
+    
+    logger.info(f"Found {len(csv_files)} CSV summary files to combine")
+    
+    # Read all CSV files into pandas DataFrames
+    all_dfs = []
+    for csv_file in csv_files:
+        try:
+            # Extract condition/region information from filename
+            filename = os.path.basename(csv_file)
+            base_name = filename.replace('_summary.csv', '')
+            
+            # Read the CSV file
+            df = pd.read_csv(csv_file)
+            
+            # Add columns to identify the source
+            # Parse out experiment details from the filename
+            if filename.startswith('masks_'):
+                # Example: masks_Dish_9_FUS-P525L_VCPi_+_Washout_+_DMSO_R_1_t00_summary.csv
+                parts = base_name.split('_')
+                
+                # Extract information - assuming a specific format
+                # This may need to be adjusted based on actual filename patterns
+                region_idx = -2 if parts[-2].startswith('R') else None
+                time_idx = -1 if parts[-1].startswith('t') else None
+                
+                if region_idx:
+                    df['Region'] = parts[region_idx]
+                if time_idx:
+                    df['Timepoint'] = parts[time_idx]
+                
+                # Extract condition by removing timepoint and region
+                condition_parts = parts[1:-2] if region_idx and time_idx else parts[1:]
+                df['Condition'] = '_'.join(condition_parts)
+            else:
+                # Generic handling if the filename doesn't match expected pattern
+                df['Source'] = base_name
+            
+            all_dfs.append(df)
+            logger.info(f"Processed {filename} with {len(df)} rows")
+            
+        except Exception as e:
+            logger.warning(f"Error reading CSV file {csv_file}: {e}")
+            continue
+    
+    if not all_dfs:
+        logger.warning("No valid data found in CSV files")
+        return None
+    
+    # Combine all DataFrames
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    
+    # Generate output filename based on common elements
+    # Extract what appears to be the experiment identifier (e.g., Dish_9)
+    experiment_ids = set()
+    for csv_file in csv_files:
+        filename = os.path.basename(csv_file)
+        if filename.startswith('masks_'):
+            parts = filename.split('_')
+            if len(parts) > 2:
+                experiment_ids.add(f"{parts[1]}_{parts[2]}")
+    
+    # Create a combined filename
+    if experiment_ids:
+        combined_name = '_'.join(sorted(experiment_ids))
+    else:
+        # Fallback if we can't extract experiment IDs
+        combined_name = "combined_analysis"
+    
+    combined_file = os.path.join(output_dir, f"{combined_name}_combined_analysis.csv")
+    
+    # Save the combined DataFrame
+    combined_df.to_csv(combined_file, index=False)
+    logger.info(f"Created combined analysis file: {combined_file} with {len(combined_df)} rows")
+    
+    return combined_file
+
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())
