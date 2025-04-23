@@ -197,6 +197,11 @@ for (d = 0; d < dishes.length; d++) {
             extensions = newArray(".tif", ".tiff", ".TIF", ".TIFF");
             regionImagePath = "";
             
+            // Get a list of subdirectories in the region folder
+            print("Checking subdirectories in region folder: " + regionFolder);
+            regionSubdirs = getFileList(regionFolder);
+            
+            // Try directly in the region folder first
             for (n = 0; n < 2; n++) {
                 for (e = 0; e < extensions.length; e++) {
                     testPath = regionFolder + possibleBaseNames[n] + extensions[e];
@@ -211,42 +216,94 @@ for (d = 0; d < dishes.length; d++) {
                 if (regionImagePath != "") break;  // Stop if we found an image
             }
             
+            // If not found directly, try in each subdirectory
+            if (regionImagePath == "") {
+                print("Image not found directly, checking subdirectories...");
+                
+                for (sd = 0; sd < regionSubdirs.length; sd++) {
+                    subdir = regionSubdirs[sd];
+                    
+                    // Skip non-directories and hidden folders
+                    if (!File.isDirectory(regionFolder + subdir) || indexOf(subdir, ".") == 0) {
+                        continue;
+                    }
+                    
+                    print("Checking in subdirectory: " + subdir);
+                    subdirPath = regionFolder + subdir;
+                    // Ensure trailing slash
+                    if (!endsWith(subdirPath, "/")) subdirPath = subdirPath + "/";
+                    
+                    for (n = 0; n < 2; n++) {
+                        for (e = 0; e < extensions.length; e++) {
+                            testPath = subdirPath + possibleBaseNames[n] + extensions[e];
+                            print("Trying image path: " + testPath);
+                            
+                            if (File.exists(testPath)) {
+                                regionImagePath = testPath;
+                                print("Found image: " + regionImagePath);
+                                break;
+                            }
+                        }
+                        if (regionImagePath != "") break;  // Stop if we found an image
+                    }
+                    if (regionImagePath != "") break;  // Stop if we found an image
+                }
+            }
+            
             if (regionImagePath == "") {
                 print("No matching image found for base name: " + baseName);
                 continue;
             }
             
-            // Extract the region identifier from the base name
-            // Adding more debugging for region matching
-            print("DEBUG - Analyzing for region: " + baseName);
+            // Extract the region identifier from the image path, not just the base name
+            print("DEBUG - Analyzing for region using file path: " + regionImagePath);
             region = "";
             
-            // Add a more flexible pattern for region identification
-            if (indexOf(baseName, "50min_Washout") >= 0) {
-                region = "50min_Washout";
-                print("DEBUG - Matched 50min_Washout pattern");
-            } else if (indexOf(baseName, "TS1_50min") >= 0) {
-                region = "TS1_50min";
-                print("DEBUG - Matched TS1_50min pattern");
-            } else if (indexOf(baseName, "TS2_50min") >= 0) {
-                region = "TS2_50min";
-                print("DEBUG - Matched TS2_50min pattern");
-            } else if (indexOf(baseName, "R_1") >= 0 || indexOf(baseName, "1_") >= 0) {
+            // First, try to extract the region from the actual image file path
+            // This is more reliable than using just the base name
+            if (indexOf(regionImagePath, "/R_1_") >= 0) {
                 region = "R_1";
-                print("DEBUG - Matched R_1 pattern");
-            } else if (indexOf(baseName, "R_2") >= 0 || indexOf(baseName, "2_") >= 0) {
+                print("DEBUG - Extracted R_1 from image path");
+            } else if (indexOf(regionImagePath, "/R_2_") >= 0) {
                 region = "R_2";
-                print("DEBUG - Matched R_2 pattern");
-            } else if (indexOf(baseName, "R_3") >= 0 || indexOf(baseName, "3_") >= 0) {
+                print("DEBUG - Extracted R_2 from image path");
+            } else if (indexOf(regionImagePath, "/R_3_") >= 0) {
                 region = "R_3";
-                print("DEBUG - Matched R_3 pattern");
-            } else if (indexOf(baseName, "R_4") >= 0 || indexOf(baseName, "4_") >= 0) {
+                print("DEBUG - Extracted R_3 from image path");
+            } else if (indexOf(regionImagePath, "/R_4_") >= 0) {
                 region = "R_4";
-                print("DEBUG - Matched R_4 pattern");
+                print("DEBUG - Extracted R_4 from image path");
             } else {
-                // If no pattern matches, use the entire base name as the region
-                region = baseName;
-                print("DEBUG - No region pattern match, using full base name: " + baseName);
+                // Fallback to the existing pattern matching logic if needed
+                print("DEBUG - Could not extract region from path, trying base name: " + baseName);
+                
+                // Add a more flexible pattern for region identification
+                if (indexOf(baseName, "50min_Washout") >= 0) {
+                    region = "50min_Washout";
+                    print("DEBUG - Matched 50min_Washout pattern");
+                } else if (indexOf(baseName, "TS1_50min") >= 0) {
+                    region = "TS1_50min";
+                    print("DEBUG - Matched TS1_50min pattern");
+                } else if (indexOf(baseName, "TS2_50min") >= 0) {
+                    region = "TS2_50min";
+                    print("DEBUG - Matched TS2_50min pattern");
+                } else if (indexOf(baseName, "R_1") >= 0 || indexOf(baseName, "1_") >= 0) {
+                    region = "R_1";
+                    print("DEBUG - Matched R_1 pattern");
+                } else if (indexOf(baseName, "R_2") >= 0 || indexOf(baseName, "2_") >= 0) {
+                    region = "R_2";
+                    print("DEBUG - Matched R_2 pattern");
+                } else if (indexOf(baseName, "R_3") >= 0 || indexOf(baseName, "3_") >= 0) {
+                    region = "R_3";
+                    print("DEBUG - Matched R_3 pattern");
+                } else if (indexOf(baseName, "R_4") >= 0 || indexOf(baseName, "4_") >= 0) {
+                    region = "R_4";
+                    print("DEBUG - Matched R_4 pattern");
+                } else {
+                    // If no pattern matches, use the entire base name as the region
+                    region = baseName;
+                    print("DEBUG - No region pattern match, using full base name: " + baseName);
+                }
             }
             
             print("Identified region: " + region);
