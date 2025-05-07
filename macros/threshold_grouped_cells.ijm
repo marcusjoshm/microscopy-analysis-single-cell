@@ -11,9 +11,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-04-03_analysis_Dish_10/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-04-03_analysis_Dish_10/grouped_masks/";
-flagFile = "/Volumes/NX-01-A/2025-04-03_analysis_Dish_10/grouped_masks/NEED_MORE_BINS.flag";
+cellsDir = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_masks/";
+flagFile = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_masks/NEED_MORE_BINS.flag";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);

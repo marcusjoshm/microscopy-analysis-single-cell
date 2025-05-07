@@ -357,16 +357,22 @@ class WorkflowOrchestrator:
                             except:
                                 pass  # If not empty, just leave it
             
-            # Create region-timepoint subdirectories for final selection
+            # Skip creating region-timepoint subdirectories
+            # We're removing this part because the actual directories used by the scripts
+            # are created automatically with more specific naming conventions
+            # This fixes the issue of having duplicate directories like:
+            # - 120min_washout_t00 (created here but never used)
+            # - 120min_washout_Merged_ch00_t00_t00 (created by ImageJ and actually used)
+            
+            # Instead, just ensure the base condition directories exist
             base_dirs_with_region_time_subdir = ['cells', 'grouped_cells', 'grouped_masks', 'masks']
             for base_dir_name in base_dirs_with_region_time_subdir:
                 base_path = self.output_dir / base_dir_name
                 for condition_name in conditions_to_process:
                     condition_path = base_path / condition_name
-                    for region in regions_to_process:
-                        for timepoint in timepoints_to_process:
-                            subdir_name = f"{region}_{timepoint}"
-                            (condition_path / subdir_name).mkdir(parents=True, exist_ok=True)
+                    condition_path.mkdir(parents=True, exist_ok=True)
+                    
+            logger.info("Base condition directories created - specific region directories will be created by the processing scripts")
             
             # --- Copy selected raw data files ---
             logger.info("Copying selected raw data files...")
@@ -642,7 +648,70 @@ class WorkflowOrchestrator:
             self.workflow_state['selected_timepoints'] = self.timepoints
             
         elif step_name == "select_regions" and not self.regions:
-            available_items = self.experiment_metadata['regions']
+            # Only show regions that exist in the selected conditions
+            if not self.selected_conditions:
+                logger.warning("No conditions selected. Please select conditions first.")
+                return False
+                
+            # Filter regions based on the selected conditions
+            # Get all tif files for selected conditions
+            available_regions_by_condition = {}
+            for condition in self.selected_conditions:
+                condition_dir = self.input_dir / condition
+                if condition_dir.exists():
+                    # Find all TIF files in this condition
+                    tif_files = list(condition_dir.glob("**/*.tif"))
+                    # Extract regions from filenames
+                    regions_in_condition = set()
+                    for tif_file in tif_files:
+                        filename = tif_file.name
+                        # Extract region (everything before _Merged)
+                        merged_idx = filename.find('_Merged')
+                        if merged_idx > 0:
+                            region_name = filename[:merged_idx]
+                            regions_in_condition.add(region_name)
+                    available_regions_by_condition[condition] = sorted(list(regions_in_condition))
+                else:
+                    logger.warning(f"Selected condition '{condition}' directory not found")
+                    available_regions_by_condition[condition] = []
+            
+            # Log the regions available in each condition
+            for condition, regions in available_regions_by_condition.items():
+                logger.info(f"Regions available in condition '{condition}': {regions}")
+            
+            # Check if all conditions have the same regions
+            first_condition = self.selected_conditions[0]
+            first_regions = set(available_regions_by_condition.get(first_condition, []))
+            same_regions_across_conditions = True
+            
+            for condition in self.selected_conditions[1:]:
+                other_regions = set(available_regions_by_condition.get(condition, []))
+                if first_regions != other_regions:
+                    same_regions_across_conditions = False
+                    break
+            
+            if not same_regions_across_conditions:
+                logger.error("Selected conditions have different available regions:")
+                for condition, regions in available_regions_by_condition.items():
+                    logger.error(f"  '{condition}': {regions}")
+                logger.error("The workflow cannot proceed with inconsistent regions across conditions.")
+                print("\nERROR: Selected conditions have different available regions.")
+                print("Please select conditions with the same regions or modify your data structure.")
+                print("Press Enter to exit...")
+                input()
+                sys.exit(1)
+                
+            # All conditions have the same regions, so we can use the first one's regions list
+            available_items = available_regions_by_condition.get(self.selected_conditions[0], [])
+            logger.info(f"Available regions for selected conditions: {available_items}")
+            
+            if not available_items:
+                logger.error("No regions found for the selected conditions")
+                print("\nERROR: No regions found for the selected conditions.")
+                print("Press Enter to exit...")
+                input()
+                sys.exit(1)
+                
             item_type = "regions"
             self._handle_list_selection(available_items, item_type, self.regions)
             self.workflow_state['selected_regions'] = self.regions

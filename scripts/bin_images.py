@@ -74,10 +74,29 @@ def process_images(input_dir, output_dir, bin_factor=4,
     logger.info(f"Found {len(all_files)} total .tif files in {input_path}.")
 
     # Convert selection lists to sets for efficient lookup, if they exist
-    selected_conditions = set(target_conditions) if target_conditions else None
-    selected_regions = set(target_regions) if target_regions else None
-    selected_timepoints = set(target_timepoints) if target_timepoints else None
-    selected_channels = set(target_channels) if target_channels else None
+    # Handle 'all' special value for selections
+    all_selection = {'all'}
+    
+    if target_conditions and all_selection.issubset(set(target_conditions)):
+        selected_conditions = None  # Process all conditions
+    else:
+        selected_conditions = set(target_conditions) if target_conditions else None
+        
+    if target_regions and all_selection.issubset(set(target_regions)):
+        selected_regions = None  # Process all regions
+    else:
+        selected_regions = set(target_regions) if target_regions else None
+        
+    if target_timepoints and all_selection.issubset(set(target_timepoints)):
+        selected_timepoints = None  # Process all timepoints
+    else: 
+        selected_timepoints = set(target_timepoints) if target_timepoints else None
+        
+    if target_channels and all_selection.issubset(set(target_channels)):
+        selected_channels = None  # Process all channels
+    else:
+        selected_channels = set(target_channels) if target_channels else None
+        
     logger.info(f"Filter sets created - Conditions: {selected_conditions}, Regions: {selected_regions}, Timepoints: {selected_timepoints}, Channels: {selected_channels}")
 
     processed_count = 0
@@ -105,11 +124,21 @@ def process_images(input_dir, output_dir, bin_factor=4,
             # Extract region, timepoint, channel from filename
             filename = file_path.name
             
-            # Match region from filename - adapt pattern to your actual filenames
-            # This example looks for the prefix before "_Merged_" as the region
-            region_pattern = r'(.+?)_Merged_'
-            region_match = re.search(region_pattern, filename)
-            current_region = region_match.group(1) if region_match else None
+            # Match region from filename - more flexible approach
+            # Look for patterns like "R_1" or named regions like "120min_washout"
+            # First check for "R_X" pattern
+            region_pattern1 = r'(R_\d+)'
+            # Then check for other prefixes (like "120min_washout")
+            region_pattern2 = r'(.+?)_Merged_'
+            
+            region_match = re.search(region_pattern1, filename)
+            if region_match:
+                current_region = region_match.group(1)
+            else:
+                region_match = re.search(region_pattern2, filename)
+                current_region = region_match.group(1) if region_match else None
+                
+            logger.debug(f"Extracted region '{current_region}' from filename {filename}")
             
             # Match timepoint and channel patterns (t00, ch01 format)
             timepoint_match = re.search(r'(t\d+)', filename)
@@ -121,12 +150,21 @@ def process_images(input_dir, output_dir, bin_factor=4,
             logger.debug(f"Parsed metadata - Condition: {current_condition}, Region: {current_region}, Timepoint: {current_timepoint}, Channel: {current_channel}")
 
             # Apply filters
-            if selected_regions and (not current_region or current_region not in selected_regions):
-                continue
-            if selected_timepoints and (not current_timepoint or current_timepoint not in selected_timepoints):
-                continue
-            if selected_channels and (not current_channel or current_channel not in selected_channels):
-                continue
+            # Apply filters - only if we have them selected
+            if selected_regions is not None:
+                if not current_region or current_region not in selected_regions:
+                    logger.debug(f"Skipping file due to region filter: {current_region} not in {selected_regions}")
+                    continue
+            
+            if selected_timepoints is not None:
+                if not current_timepoint or current_timepoint not in selected_timepoints:
+                    logger.debug(f"Skipping file due to timepoint filter: {current_timepoint} not in {selected_timepoints}")
+                    continue
+                    
+            if selected_channels is not None:
+                if not current_channel or current_channel not in selected_channels:
+                    logger.debug(f"Skipping file due to channel filter: {current_channel} not in {selected_channels}")
+                    continue
                 
         except Exception as e:
             logger.warning(f"Could not parse metadata or apply filters for {file_path}. Skipping. Error: {e}")

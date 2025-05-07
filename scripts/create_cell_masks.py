@@ -88,6 +88,11 @@ def create_macro_file(roi_dir, mask_dir, output_dir, auto_close=False):
     # Generate the macro content - SIMPLIFIED VERSION
     macro_content = f"""// ----- Helper Functions -----
 function startsWith(str, prefix) {{
+    // Check if string is shorter than prefix
+    if (lengthOf(str) < lengthOf(prefix)) {{
+        return 0;
+    }}
+    
     result = substring(str, 0, lengthOf(prefix));
     if (result == prefix)
         return 1;
@@ -101,6 +106,10 @@ function endsWith(str, suffix) {{
         return 1;
     else
         return 0;
+}}
+
+function contains(str, substring) {{
+    return indexOf(str, substring) >= 0;
 }}
 
 // Enable batch mode for headless operation
@@ -159,20 +168,54 @@ for (d = 0; d < dishes.length; d++) {{
             region = "";
             timepoint = "t00";  // Default to t00
             
-            // Handle ROI filenames with format: ROIs_R_1_Merged_t00_ch01_rois.zip
-            if (startsWith(fileName, "ROIs_R_")) {{
-                // Extract just the region number more reliably
+            // Handle any ROI filename format starting with ROIs_
+            if (startsWith(fileName, "ROIs_")) {{
+                // Split the filename into parts
                 parts = split(fileName, "_");
-                if (parts.length >= 3) {{
-                    // Get the number after "R_"
-                    regionNum = parts[2];
-                    // Final region should be "R_1", "R_2", etc.
-                    region = "R_" + regionNum;
+                
+                if (parts.length >= 2) {{
+                    // Extract region from the filename - try to be smart about it
+                    // The region is typically right after "ROIs_"
+                    
+                    // Special handling for R_# pattern (common format)
+                    if (parts.length >= 3 && parts[1] == "R" && matches(parts[2], "[0-9]+")) {{
+                        region = "R_" + parts[2];
+                    }} 
+                    // For other formats, just use the part after ROIs_ as the region
+                    else {{
+                        // If we have the pattern with timepoint and channel numbers,
+                        // extract everything until we hit t## or ch## patterns
+                        regionParts = newArray();
+                        regionEndIndex = 1;
+                        
+                        for (p = 1; p < parts.length; p++) {{
+                            // Stop when we hit a timepoint (t00, t01, etc) or channel (ch00, ch01, etc)
+                            if ((startsWith(parts[p], "t") && matches(substring(parts[p], 1), "[0-9]+")) ||
+                                (startsWith(parts[p], "ch") && matches(substring(parts[p], 2), "[0-9]+"))) {{
+                                break;
+                            }}
+                            regionParts = Array.concat(regionParts, parts[p]);
+                            regionEndIndex = p;
+                        }}
+                        
+                        // Build the region string
+                        if (regionParts.length > 0) {{
+                            region = regionParts[0];
+                            for (p = 1; p < regionParts.length; p++) {{
+                                region = region + "_" + regionParts[p];
+                            }}
+                        }} else {{
+                            // Fallback to just the first part
+                            region = parts[1];
+                        }}
+                    }}
+                    
                     print("Extracted region: " + region);
                     
                     // Try to extract timepoint from filename
                     for (p = 0; p < parts.length; p++) {{
-                        if (startsWith(parts[p], "t") && lengthOf(parts[p]) >= 3) {{
+                        if (startsWith(parts[p], "t") && lengthOf(parts[p]) >= 3 && 
+                            matches(substring(parts[p], 1), "[0-9]+")) {{
                             timepoint = parts[p];
                             break;
                         }}
@@ -193,17 +236,79 @@ for (d = 0; d < dishes.length; d++) {{
                 continue;
             }}
             
-            // Ensure region format is correct (should be "R_1", "R_2", etc.)
-            if (!startsWith(region, "R_")) {{
-                print("WARNING: Adding R_ prefix to region: " + region);
+            // Only add R_ prefix to numeric regions (1, 2, 3, etc.) but not to named regions like 120min_washout
+            if (matches(region, "^[0-9]+$")) {{
+                print("Adding R_ prefix to numeric region: " + region);
                 region = "R_" + region;
             }}
             
-            // Build the mask image filename
-            maskFileName = "MASK_" + region + "_" + timepoint + ".tif";
-            maskFilePath = maskFolder + maskFileName;
+            // Try multiple mask filename patterns to find one that exists
+            maskFileFound = false;
+            maskFilePath = "";
             
-            print("Looking for mask file: " + maskFilePath);
+            // Extract channel information if present
+            channelPart = "";
+            for (p = 0; p < parts.length; p++) {{  
+                if (startsWith(parts[p], "ch") && lengthOf(parts[p]) >= 3) {{
+                    channelPart = parts[p];
+                    break;
+                }}
+            }}
+            
+            // Try basic pattern first
+            testPath = maskFolder + "MASK_" + region + "_" + timepoint + ".tif";
+            print("Looking for mask file: " + testPath);
+            if (File.exists(testPath)) {{
+                maskFilePath = testPath;
+                maskFileFound = true;
+                print("CONFIRMED: Found mask file: " + maskFilePath);
+            }}
+            
+            // Try pattern with channel if channel was found
+            if (!maskFileFound && channelPart != "") {{
+                testPath = maskFolder + "MASK_" + region + "_" + channelPart + "_" + timepoint + ".tif";
+                print("Looking for mask file: " + testPath);
+                if (File.exists(testPath)) {{
+                    maskFilePath = testPath;
+                    maskFileFound = true;
+                    print("CONFIRMED: Found mask file: " + maskFilePath);
+                }}
+            }}
+            
+            // Try pattern with duplicate timepoint
+            if (!maskFileFound) {{
+                testPath = maskFolder + "MASK_" + region + "_" + timepoint + "_" + timepoint + ".tif";
+                print("Looking for mask file: " + testPath);
+                if (File.exists(testPath)) {{
+                    maskFilePath = testPath;
+                    maskFileFound = true;
+                    print("CONFIRMED: Found mask file: " + maskFilePath);
+                }}
+            }}
+            
+            // Try pattern with channel and duplicate timepoint
+            if (!maskFileFound && channelPart != "") {{
+                testPath = maskFolder + "MASK_" + region + "_" + channelPart + "_" + timepoint + "_" + timepoint + ".tif";
+                print("Looking for mask file: " + testPath);
+                if (File.exists(testPath)) {{
+                    maskFilePath = testPath;
+                    maskFileFound = true;
+                    print("CONFIRMED: Found mask file: " + maskFilePath);
+                }}
+            }}
+            
+            // List all available mask files if none were found
+            if (!maskFileFound) {{
+                print("ERROR: No mask file found. Looking through all files in the directory:");
+                allFiles = getFileList(maskFolder);
+                for (f = 0; f < allFiles.length; f++) {{
+                    if (endsWith(allFiles[f], ".tif") || endsWith(allFiles[f], ".tiff")) {{
+                        print("Available mask file: " + allFiles[f]);
+                    }}
+                }}
+                // Set a default path for error handling
+                maskFilePath = maskFolder + "MASK_" + region + "_" + timepoint + ".tif";
+            }}
             
             if (!File.exists(maskFilePath)) {{
                 print("ERROR: Mask file not found: " + maskFilePath);
@@ -360,6 +465,12 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False):
                 if line.strip():  # Only log non-empty lines
                     logger.warning(f"ImageJ error: {line}")
         
+        # Check for Java Runtime errors but don't immediately fail
+        java_runtime_error = False
+        if "Unable to locate a Java Runtime" in result.stderr:
+            logger.warning("Java Runtime error detected, but will continue checking for created masks")
+            java_runtime_error = True
+            
         # Check if the command executed successfully
         if result.returncode != 0:
             logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
@@ -429,15 +540,35 @@ def main():
         try:
             for root, dirs, files in os.walk(output_dir):
                 for file in files:
-                    if file.startswith("MASK_CELL") and file.endswith(".tiff"):
+                    # More flexible matching to check for mask files with different patterns
+                    if (file.startswith("MASK_CELL") and (file.endswith(".tiff") or file.endswith(".tif"))):
                         mask_files.append(os.path.join(root, file))
             
             if mask_files:
                 logger.info(f"Found {len(mask_files)} mask files in output directory")
                 logger.info("Cell mask creation completed successfully")
+                # Return success even if there were Java errors but masks were created
+                return 0
             else:
-                logger.warning("No mask files were found in the output directory!")
-                logger.warning("Cell mask creation may have failed despite successful execution")
+                # Before giving up, try a second check with a delay - sometimes network drives take time
+                logger.warning("No mask files found on first check, waiting 10 seconds and checking again...")
+                time.sleep(10)
+                
+                # Try again
+                mask_files = []
+                for root, dirs, files in os.walk(output_dir):
+                    for file in files:
+                        if (file.startswith("MASK_CELL") and (file.endswith(".tiff") or file.endswith(".tif"))):
+                            mask_files.append(os.path.join(root, file))
+                
+                if mask_files:
+                    logger.info(f"Found {len(mask_files)} mask files in output directory on second check")
+                    logger.info("Cell mask creation completed successfully")
+                    return 0
+                else:
+                    logger.warning("No mask files were found in the output directory!")
+                    logger.warning("Cell mask creation may have failed despite successful execution")
+                    return 1  # Return error code when no masks are created
         except Exception as e:
             logger.error(f"Error checking for created mask files: {e}")
         

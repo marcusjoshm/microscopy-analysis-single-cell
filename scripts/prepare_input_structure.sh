@@ -104,10 +104,19 @@ process_timepoint_directory() {
     done
 }
 
-# First, remove any MetaData directory
-if [ -d "$INPUT_DIR/MetaData" ]; then
-    echo -e "${YELLOW}Removing MetaData directory${NC}"
-    rm -rf "$INPUT_DIR/MetaData"
+# Remove all MetaData directories at any level
+echo -e "${BLUE}Searching for and removing MetaData directories...${NC}"
+find "$INPUT_DIR" -type d -name "MetaData" | while read -r metadata_dir; do
+    echo -e "${YELLOW}Removing MetaData directory: $metadata_dir${NC}"
+    rm -rf "$metadata_dir"
+done
+
+# Report how many were removed
+metadata_count=$(find "$INPUT_DIR" -type d -name "MetaData" | wc -l)
+if [ "$metadata_count" -eq 0 ]; then
+    echo -e "${GREEN}No MetaData directories found or all have been successfully removed${NC}"
+else
+    echo -e "${RED}Warning: $metadata_count MetaData directories could not be removed${NC}"
 fi
 
 # Count .tif files directly in the input directory

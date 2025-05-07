@@ -14,6 +14,7 @@ import sys
 import argparse
 import logging
 import glob
+import csv
 from pathlib import Path
 import numpy as np
 import cv2
@@ -446,9 +447,23 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
                 cluster_values = auc_values[labels == label]
                 cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
     
+    # Recalculate cluster means
+    cluster_means = {}
+    for label in range(actual_num_bins):
+        cluster_values = auc_values[labels == label]
+        cluster_means[label] = cluster_values.mean() if len(cluster_values) > 0 else 0
+    
     # Sort clusters by mean intensity for consistent binning
     sorted_clusters = sorted(cluster_means, key=lambda k: cluster_means[k])
+    
+    # Create a deterministic mapping from old cluster IDs to new sorted cluster IDs
+    # This ensures that cells are consistently mapped to intensity-based groups
     label_mapping = {old_label: new_label for new_label, old_label in enumerate(sorted_clusters)}
+    
+    # Log the mapping for debugging
+    logger.info("Cluster mapping (original_cluster_id -> sorted_group_id):")
+    for old_label, new_label in label_mapping.items():
+        logger.info(f"  Cluster {old_label} (mean: {cluster_means[old_label]:.2f}) -> Group {new_label+1}")
     
     # Initialize list to hold summed images for each group
     sum_images = [None] * actual_num_bins
@@ -547,6 +562,81 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
             if original_label in cluster_means:
                 f.write(f"  Mean intensity: {cluster_means[original_label]:.2f}\n")
             f.write("\n")
+    
+    # Calculate mean AUC values for each group - using mapped group IDs (1-based)
+    group_mean_auc = {}
+    mapped_group_cells = {}
+    
+    # First, create a mapping of cells to their final mapped groups
+    for idx, (_, auc_value, _, _) in enumerate(image_data):
+        original_label = labels[idx]
+        
+        # Map to sorted group index (1-based for user-friendliness)
+        if original_label in label_mapping:
+            mapped_label = label_mapping[original_label] + 1  # 1-based group index
+        else:
+            # This shouldn't happen, but just in case
+            mapped_label = (original_label % actual_num_bins) + 1
+            
+        # Add this cell's AUC to the appropriate group
+        if mapped_label not in mapped_group_cells:
+            mapped_group_cells[mapped_label] = []
+        
+        mapped_group_cells[mapped_label].append(auc_value)
+    
+    # Now calculate mean AUC for each final group
+    for group_id in range(1, actual_num_bins + 1):  # 1-based groups
+        if group_id in mapped_group_cells and mapped_group_cells[group_id]:
+            group_mean_auc[group_id] = np.mean(mapped_group_cells[group_id])
+        else:
+            group_mean_auc[group_id] = 0
+            logger.warning(f"Group {group_id} has no cells assigned to it")
+    
+    # Log mean AUC values for each group
+    logger.info("Mean intensity (AUC) values for each group:")
+    for group_id, mean_auc in sorted(group_mean_auc.items()):
+        logger.info(f"  Group {group_id}: {mean_auc:.2f}")
+    
+    # Save a CSV file with cell-to-group mapping
+    cell_group_csv = output_subdir / f"{cell_dir.name}_cell_groups.csv"
+    logger.info(f"Saving cell group mapping to {cell_group_csv}")
+    
+    with open(cell_group_csv, 'w', newline='') as csvfile:
+        fieldnames = ['cell_filename', 'cell_id', 'group_id', 'group_name', 'group_mean_auc', 'cell_auc']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for idx, (filename, auc_value, _, _) in enumerate(image_data):
+            original_label = labels[idx]
+            # Map to sorted group index (1-based for user-friendliness)
+            if original_label in label_mapping:
+                mapped_label = label_mapping[original_label] + 1  # 1-based group index
+            else:
+                # This shouldn't happen, but just in case
+                mapped_label = (original_label % actual_num_bins) + 1
+            
+            # Extract cell_id from filename, simplify to just the numeric part
+            basename = os.path.basename(filename)
+            # First get the base name without extension
+            cell_id = basename.replace('.tif', '')
+            # Then extract just the numeric part if it contains 'CELL'
+            if 'CELL' in cell_id:
+                # Extract the numeric part after 'CELL'
+                numeric_part = ''.join(c for c in cell_id if c.isdigit())
+                if numeric_part:
+                    cell_id = numeric_part
+            
+            # Ensure the group_id is an integer for consistency
+            mapped_label_int = int(mapped_label)
+            
+            writer.writerow({
+                'cell_filename': filename,
+                'cell_id': cell_id,
+                'group_id': mapped_label_int,
+                'group_name': f"Group_{mapped_label_int}",
+                'group_mean_auc': group_mean_auc.get(mapped_label_int, 0),
+                'cell_auc': auc_value
+            })
     
     return True
 
