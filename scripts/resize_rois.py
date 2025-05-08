@@ -129,6 +129,13 @@ for (c = 0; c < condition_dirs.length; c++) {{
             print("  Opening image: " + image_path);
             open(image_path);
             image_title = getTitle();
+            
+            // Apply transformations to match the ROIs from Cellpose 4.0.1
+            print("  Applying transformations to match Cellpose 4.0.1 ROIs");
+            // First flip the image horizontally
+            run("Flip Horizontally");
+            // Then rotate 90 degrees counterclockwise
+            run("Rotate 90 Degrees Left");
 
             print("  Opening ROI file: " + roi_path);
             // Initialize ROI Manager

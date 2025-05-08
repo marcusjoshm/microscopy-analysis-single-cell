@@ -354,6 +354,14 @@ for (d = 0; d < dishes.length; d++) {
             print("Opening image: " + regionImagePath);
             open(regionImagePath);
             regionTitle = getTitle();
+            
+            // Apply transformations to match the ROIs from Cellpose 4.0.1
+            print("Applying transformations to match Cellpose 4.0.1 ROIs");
+            // First flip the image horizontally
+            run("Flip Horizontally");
+            // Then rotate 90 degrees counterclockwise
+            run("Rotate 90 Degrees Left");
+            
             print("Opened region image: " + regionTitle + " (" + regionImagePath + ")");
             
             // Set up the output folder for processed cells.

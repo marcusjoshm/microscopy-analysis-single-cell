@@ -64,17 +64,6 @@
       "description": "Launch Cellpose and FIJI for interactive cell segmentation"
     },
     {
-      "name": "rotate_cellpose_rois",
-      "type": "python",
-      "path": "scripts/rotate_cellpose_rois.py",
-      "args": [
-        "--input-dir", "{output_dir}/preprocessed",
-        "--imagej", "{imagej_path}",
-        "--verbose"
-      ],
-      "description": "Rotate ROIs 90 degrees counterclockwise to fix Cellpose 4.0.1 rotation issue"
-    },
-    {
       "name": "roi_tracking",
       "type": "python",
       "path": "scripts/track_rois.py",
