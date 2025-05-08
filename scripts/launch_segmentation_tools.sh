@@ -33,13 +33,36 @@ cd "$CELLPOSE_DIR" || handle_error "Could not change to Cellpose directory"
 # Activate the Cellpose virtual environment
 source venv/bin/activate || handle_error "Could not activate Cellpose environment"
 
-# Echo current Python and numpy version (for debugging)
-echo "Using Python: $(which python)"
-echo "Using numpy version: $(python -c 'import numpy; print(numpy.__version__)')"
+# Enhanced debugging for Cellpose environment
+DEBUG_LOG="${PREPROCESSED_DIR}/cellpose_debug.log"
+echo "===================== CELLPOSE DEBUG INFO =====================" > "$DEBUG_LOG"
+echo "Date: $(date)" >> "$DEBUG_LOG"
+echo "Working directory: $(pwd)" >> "$DEBUG_LOG"
+echo "Python executable: $(which python)" >> "$DEBUG_LOG"
+echo "Python version: $(python --version 2>&1)" >> "$DEBUG_LOG"
+echo "Numpy version: $(python -c 'import numpy; print(numpy.__version__)')" >> "$DEBUG_LOG"
 
-# Start Cellpose GUI in the background
+# Check Cellpose version and configuration
+echo "Cellpose version: $(python -c 'import cellpose; print(cellpose.__version__)')" >> "$DEBUG_LOG"
+echo "Cellpose installation: $(python -c 'import cellpose; print(cellpose.__file__)')" >> "$DEBUG_LOG"
+echo "Cellpose config: $(python -c 'import os, json; from pathlib import Path; config_path = Path.home().joinpath(".cellpose", "config.json"); print(json.dumps(json.load(open(config_path))) if os.path.exists(config_path) else "No config file found")')" >> "$DEBUG_LOG"
+
+# Log environment variables that might affect image processing
+echo "\nRelevant environment variables:" >> "$DEBUG_LOG"
+env | grep -E 'PYTHONPATH|DISPLAY|QT|OPENCV|CUDA|TORCH|TF|CELL|PATH' >> "$DEBUG_LOG"
+
+# Log the preprocessed directory content
+echo "\nPreprocessed directory content:" >> "$DEBUG_LOG"
+find "$PREPROCESSED_DIR" -type f -name "*.tif" | head -n 20 >> "$DEBUG_LOG"
+
+echo "\n==================== END DEBUG INFO ====================" >> "$DEBUG_LOG"
+echo "Debug info saved to $DEBUG_LOG"
+
+# Start Cellpose GUI in the background with debug logging
 echo "Starting Cellpose GUI..."
-cellpose &
+# Using python -m cellpose invocation method to ensure consistent image loading
+# This matches how Cellpose is run directly by the user
+python -m cellpose 2>&1 | tee "${PREPROCESSED_DIR}/cellpose_output.log" &
 CELLPOSE_PID=$!
 
 # Check if Cellpose started successfully
