@@ -31,7 +31,7 @@ When Terminal opens, you'll see a prompt that looks something like `(base) ➜  
 
 ## Step 0: Export Data from LASX
 
-Create an folder on the D drive to export your data and export your data as .tiff files into that folder. For tile-scans, run mosaic merge with None selected as the filtering method. For z-stacks perform a maximum intensity projection. Export only merged and max projected files for this analysis workflow. Time-lapse data with multiple time-points are okay and have a dedicated feature for analysis.
+Create an export folder and export your data as .tiff files into that folder. For tile-scans, run mosaic merge with None selected as the filtering method. For z-stacks perform a maximum intensity projection. Export only merged and max projected files for this analysis workflow. Time-lapse data with multiple time-points are okay and have a dedicated feature for analysis.
 
 Copy the export folder to the LEELAB surver from the microscope PC. You can now proceed to analysis on the lab Macbook Pro.
 
