@@ -416,13 +416,18 @@ At this point, your analysis is complete and the results are ready for review.
 ### Common Errors and Solutions
 
 I will include common errors in the workflow here, what to look for if there is an issue, and how to fix it. If you run into an unexpected error or issue, take a screenshot and document the issue.
-```
 
 #### Need Additional Help?
 
 If you encounter persistent issues, please contact:
 - IT Support: joshua.marcus@bcm.edu
 
+ 
+ 
+ 
+ 
+ 
+ 
 # Microscopy Analysis for Single-Cell Imaging Documentation
 
 End-to-end single-cell analysis workflow for fluorescence microscopy datasets exported from LASX.
