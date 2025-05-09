@@ -19,6 +19,10 @@ This document provides step-by-step instructions for running our single cell ana
 
 ## Getting Started
 
+### Export Data from LASX
+
+This workflow is designed to work seamlessly with data exported directly from LASX. It relies on the file naming and directory structure used by LASX when images are exported as .tiff files. From LASX, highlight the images you want to export from the `Open projects` tab. Right click and select "Export Image". Make a new folder in the E drive to export your data and click OK. Make sure "Export Channels" is checked and RAW image is selected, then click Save. Copy the export folder to the LEELAB surver from the microscope PC. You can now proceed to analysis on the lab Macbook Pro.
+
 ### Opening Terminal
 
 1. Press Command + Space to open Spotlight Search
@@ -29,13 +33,8 @@ Alternatively you can click on the Terminal app icon located in the doc at the b
 
 When Terminal opens, you'll see a prompt that looks something like `(base) ➜  ~`
 
-## Step 0: Export Data from LASX
 
-Create an export folder and export your data as .tiff files into that folder. For tile-scans, run mosaic merge with None selected as the filtering method. For z-stacks perform a maximum intensity projection. Export only merged and max projected files for this analysis workflow. Time-lapse data with multiple time-points are okay and have a dedicated feature for analysis.
-
-Copy the export folder to the LEELAB surver from the microscope PC. You can now proceed to analysis on the lab Macbook Pro.
-
-# Step 1: Remove Spaces from File Names
+## Step 1: Remove Spaces from File Names
 
 Our analysis workflow requires file paths without spaces. Follow these steps to convert spaces in your file names to underscores:
 
