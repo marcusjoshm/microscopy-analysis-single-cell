@@ -167,10 +167,14 @@ class WorkflowOrchestrator:
                     channel = channel_match.group(1)
                     metadata['channels'].add(channel)
                 
-                # Extract region (everything before _Merged)
-                merged_idx = filename.find('_Merged')
-                if merged_idx > 0:
-                    region_name = filename[:merged_idx]
+                # Extract region by looking at what's not a channel or timepoint
+                # Remove channel and timepoint parts from filename
+                temp_name = re.sub(r'(ch\d+|t\d+)', '', filename)
+                # Remove file extension
+                temp_name = os.path.splitext(temp_name)[0]
+                # Remove any trailing or duplicate underscores from the result and clean it up
+                region_name = re.sub(r'_+', '_', temp_name).strip('_')
+                if region_name:  # Only add if not empty
                     metadata['regions'].add(region_name)
                     
                     # Add channel to this region's available channels
@@ -665,10 +669,14 @@ class WorkflowOrchestrator:
                     regions_in_condition = set()
                     for tif_file in tif_files:
                         filename = tif_file.name
-                        # Extract region (everything before _Merged)
-                        merged_idx = filename.find('_Merged')
-                        if merged_idx > 0:
-                            region_name = filename[:merged_idx]
+                        # Extract region by looking at what's not a channel or timepoint
+                        # Remove channel and timepoint parts from filename
+                        temp_name = re.sub(r'(ch\d+|t\d+)', '', filename)
+                        # Remove file extension
+                        temp_name = os.path.splitext(temp_name)[0]
+                        # Remove any trailing or duplicate underscores from the result and clean it up
+                        region_name = re.sub(r'_+', '_', temp_name).strip('_')
+                        if region_name:  # Only add if not empty
                             regions_in_condition.add(region_name)
                     available_regions_by_condition[condition] = sorted(list(regions_in_condition))
                 else:
