@@ -124,19 +124,31 @@ def process_images(input_dir, output_dir, bin_factor=4,
             # Extract region, timepoint, channel from filename
             filename = file_path.name
             
-            # Match region from filename - more flexible approach
-            # Look for patterns like "R_1" or named regions like "120min_washout"
-            # First check for "R_X" pattern
-            region_pattern1 = r'(R_\d+)'
-            # Then check for other prefixes (like "120min_washout")
-            region_pattern2 = r'(.+?)_Merged_'
+            # Match region from filename based on actual naming convention in the dataset
+            # Pattern for filenames like: 60min_washout_P_10_RAW_ch01_t00.tif
+            region_pattern = r'(.+?)_(ch\d+)_(t\d+)'
             
-            region_match = re.search(region_pattern1, filename)
+            region_match = re.search(region_pattern, filename)
             if region_match:
-                current_region = region_match.group(1)
+                current_region = region_match.group(1)  # This will capture '60min_washout_P_10_RAW'
             else:
-                region_match = re.search(region_pattern2, filename)
-                current_region = region_match.group(1) if region_match else None
+                # Fallback for other potential naming patterns
+                # Try to extract everything before the channel and timepoint
+                parts = filename.split('_')
+                ch_index = -1
+                t_index = -1
+                for i, part in enumerate(parts):
+                    if part.startswith('ch'):
+                        ch_index = i
+                    if part.startswith('t'):
+                        t_index = i
+                
+                if ch_index > 0:  # If we found a channel marker
+                    current_region = '_'.join(parts[:ch_index])
+                else:
+                    current_region = None
+                    
+                logger.debug(f"Fallback region extraction: {current_region} from {filename}")
                 
             logger.debug(f"Extracted region '{current_region}' from filename {filename}")
             
