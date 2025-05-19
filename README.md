@@ -204,6 +204,37 @@ Enter your selection: 1 5
 
 **Important for multi_timepoint data:** The program has a feature that tracks cells across timepoints, so each ROI number from a given dataset corresponds to the same cell throughout the analysis.
 
+### Selecting Condition
+
+Next, you'll see a prompt to select the experimental condition for analysis:
+
+```
+================================================================================
+MANUAL STEP REQUIRED: select_condition
+================================================================================
+```
+
+"Condition" in this case will be the name of the .lif project file where data was exported. If you exported data from multiple project files, there will be a list of conditions to choose from, otherwise there will only be one. An example of a condition list looks something like this:
+
+```
+Available conditions:
+1. Dish_1_Sec61b_Washout_+_DMSO
+2. Dish_2_Sec61b_Washout_+_Rapa
+3. Dish_3_RTN4_Washout_+_DMSO
+4. Dish_4_RTN4_Washout_+_Rapa
+5. Dish_5_CLIMP63_Washout_+_DMSO
+6. Dish_6_CLIMP63_Washout_+_Rapa
+
+Input options for conditions:
+- Enter conditions as space-separated text (e.g., 'Dish_1_Sec61b_Washout_+_DMSO Dish_6_CLIMP63_Washout_+_Rapa')
+- Enter numbers from the list (e.g., '1 6')
+- Type 'all' to select all conditions
+
+Enter your selection:
+```
+
+Type the number of the project file you would like to analyze. If you want to analyze multiple condition datasets at the same time, type the numbers separated by a space, or type "all" if you want to analyze everything. Then press `Enter`.
+
 ### Selecting Regions
 
 After selecting timepoints, you'll be prompted to select regions for analysis:
