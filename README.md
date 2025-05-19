@@ -44,6 +44,8 @@ Our analysis workflow requires file paths without spaces. Follow these steps to 
 cd ~/bash_scripts/
 ```
 
+3. Press `Enter`.
+
 2. Next, copy and paste this command:
 
 ```bash
@@ -52,7 +54,7 @@ cd ~/bash_scripts/
 
 3. Drag the folder you want to analyze from Finder into the Terminal window. The file path will appear automatically.
 
-4. Press Enter.
+4. Press `Enter`.
 
 5. You will see a prompt that looks like this:
 
@@ -91,7 +93,9 @@ cd ~/microscopy-analysis-single-cell
 venvact
 ```
 
-2. You should now see `(venv)` at the beginning of the command prompt line. This indicates that the Python virtual environment is activated and the program is ready to run.
+2. Press `Enter`.
+
+3. You should now see `(venv)` at the beginning of the command prompt line. This indicates that the Python virtual environment is activated and the program is ready to run.
 
 Example of how your prompt should look:
 ```bash
@@ -123,7 +127,7 @@ Your final command should look something like this:
 python single_cell_workflow.py --config workflow_config.json --input /Volumes/LEELAB/JL_Data/2025-05-08_export_max --output /Volumes/LEELAB/JL_Data/2025-05-08_analysis_Dish_1_Control_40minWash
 ```
 
-7. Press Enter to start the analysis.
+7. Press `Enter` to start the analysis.
 
 8. The script will create an output folder with the name you specified, containing all analysis results.
 
