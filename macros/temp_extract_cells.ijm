@@ -17,9 +17,9 @@ function endsWith(str, suffix) {
 }
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/raw_data/";
-outputParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/cells/";
+roiParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/ROIs/";
+rawDataParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/raw_data/";
+outputParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/cells/";
 
 
 // Ensure trailing slashes for path concatenation
@@ -119,10 +119,11 @@ for (d = 0; d < dishes.length; d++) {
             
             print("Base name: " + baseName);
             
-            // Try different possible filenames - with and without R_ prefix
-            possibleBaseNames = newArray(2);
+            // Use a more flexible approach to match filenames
+            possibleBaseNames = newArray(1);
             possibleBaseNames[0] = baseName;
-            possibleBaseNames[1] = "R_" + baseName;
+            
+            // No longer add R_ prefix - rely on flexible matching instead
             
             // Try different image extensions
             extensions = newArray(".tif", ".tiff", ".TIF", ".TIFF");
@@ -190,51 +191,43 @@ for (d = 0; d < dishes.length; d++) {
             print("DEBUG - Analyzing for region using file path: " + regionImagePath);
             region = "";
             
-            // First, try to extract the region from the actual image file path
-            // This is more reliable than using just the base name
-            if (indexOf(regionImagePath, "/R_1_") >= 0) {
-                region = "R_1";
-                print("DEBUG - Extracted R_1 from image path");
-            } else if (indexOf(regionImagePath, "/R_2_") >= 0) {
-                region = "R_2";
-                print("DEBUG - Extracted R_2 from image path");
-            } else if (indexOf(regionImagePath, "/R_3_") >= 0) {
-                region = "R_3";
-                print("DEBUG - Extracted R_3 from image path");
-            } else if (indexOf(regionImagePath, "/R_4_") >= 0) {
-                region = "R_4";
-                print("DEBUG - Extracted R_4 from image path");
-            } else {
-                // Fallback to the existing pattern matching logic if needed
-                print("DEBUG - Could not extract region from path, trying base name: " + baseName);
-                
-                // Add a more flexible pattern for region identification
-                if (indexOf(baseName, "50min_Washout") >= 0) {
-                    region = "50min_Washout";
-                    print("DEBUG - Matched 50min_Washout pattern");
-                } else if (indexOf(baseName, "TS1_50min") >= 0) {
-                    region = "TS1_50min";
-                    print("DEBUG - Matched TS1_50min pattern");
-                } else if (indexOf(baseName, "TS2_50min") >= 0) {
-                    region = "TS2_50min";
-                    print("DEBUG - Matched TS2_50min pattern");
-                } else if (indexOf(baseName, "R_1") >= 0 || indexOf(baseName, "1_") >= 0) {
-                    region = "R_1";
-                    print("DEBUG - Matched R_1 pattern");
-                } else if (indexOf(baseName, "R_2") >= 0 || indexOf(baseName, "2_") >= 0) {
-                    region = "R_2";
-                    print("DEBUG - Matched R_2 pattern");
-                } else if (indexOf(baseName, "R_3") >= 0 || indexOf(baseName, "3_") >= 0) {
-                    region = "R_3";
-                    print("DEBUG - Matched R_3 pattern");
-                } else if (indexOf(baseName, "R_4") >= 0 || indexOf(baseName, "4_") >= 0) {
-                    region = "R_4";
-                    print("DEBUG - Matched R_4 pattern");
-                } else {
-                    // If no pattern matches, use the entire base name as the region
-                    region = baseName;
-                    print("DEBUG - No region pattern match, using full base name: " + baseName);
+            // IMPROVED: Extract the original region name directly from the filename
+            // This should match the region names selected by the user at the workflow start
+            
+            // Extract the full base name from the original file and use it as the region
+            // This preserves the exact region names that were selected by the user
+            extractedRegion = "";
+            
+            // Remove the ROIs_ prefix and _rois.zip suffix to get the original region name
+            if (startsWith(fileName, "ROIs_")) {
+                extractedPart = substring(fileName, 5);  // Remove "ROIs_" prefix
+                if (endsWith(extractedPart, "_rois.zip")) {
+                    // Remove "_rois.zip" suffix
+                    extractedPart = substring(extractedPart, 0, lengthOf(extractedPart) - 9);
+                    extractedRegion = extractedPart;
+                } else if (endsWith(extractedPart, ".zip")) {
+                    // Remove ".zip" suffix
+                    extractedPart = substring(extractedPart, 0, lengthOf(extractedPart) - 4);
+                    extractedRegion = extractedPart;
                 }
+            }
+            
+            // If extraction worked, use it as our region
+            if (extractedRegion != "") {
+                // Clean up any channel or timepoint suffixes if present
+                channelIndex = indexOf(extractedRegion, "_ch");
+                if (channelIndex > 0) {
+                    extractedRegion = substring(extractedRegion, 0, channelIndex);
+                }
+                
+                region = extractedRegion;
+                print("Extracted original region name from ROI file: " + region);
+            } 
+            // Fallback to other methods if the extraction didn't work
+            else {
+                // Try to use the basename directly
+                region = baseName;
+                print("Using base name as region: " + region);
             }
             
             print("Identified region: " + region);
@@ -285,6 +278,10 @@ for (d = 0; d < dishes.length; d++) {
             print("Opening image: " + regionImagePath);
             open(regionImagePath);
             regionTitle = getTitle();
+            
+            // No transformations needed - Cellpose invocation method fixed the orientation issue
+            print("Image dimensions: " + getWidth() + " x " + getHeight());
+            
             print("Opened region image: " + regionTitle + " (" + regionImagePath + ")");
             
             // Set up the output folder for processed cells.

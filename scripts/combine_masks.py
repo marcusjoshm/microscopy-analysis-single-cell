@@ -38,17 +38,17 @@ def get_mask_prefix(filename):
     Extract the mask prefix from a filename.
     
     Args:
-        filename (str): The mask filename (e.g., MASK_R_1_t00_bin_1_n4.tif)
+        filename (str): The mask filename (e.g., any region name format with _bin_ pattern)
         
     Returns:
-        str: The mask prefix (e.g., MASK_R_1_t00)
+        str: The mask prefix (everything before _bin_)
     """
-    # Split by "_bin_" which appears in all your mask files
+    # Split by "_bin_" which appears in all mask files
     parts = filename.split("_bin_")
     if len(parts) < 2:
         return None
     
-    # Return the part before "_bin_"
+    # Return the part before "_bin_", which will preserve any region naming convention
     return parts[0]
 
 def find_mask_groups(mask_dir):

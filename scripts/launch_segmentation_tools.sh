@@ -2,7 +2,7 @@
 # This script launches both Cellpose and ImageJ for interactive segmentation work
 
 # Path to Cellpose installation
-CELLPOSE_DIR="/Users/joshuamarcus/cellpose"
+CELLPOSE_DIR="/Users/leelab/cellpose"
 # Path to FIJI/ImageJ executable
 IMAGEJ_PATH="/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx"
 # Preprocessed images directory

@@ -1,8 +1,8 @@
 
 // Resize ROIs Macro for Single Cell Analysis Workflow
 // Input and output directories
-input_dir = "/Volumes/NX-01-A/2025-05-07_analysis_Dish_1/preprocessed";
-output_dir = "/Volumes/NX-01-A/2025-05-07_analysis_Dish_1/ROIs";
+input_dir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/preprocessed";
+output_dir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/ROIs";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
@@ -87,7 +87,7 @@ for (c = 0; c < condition_dirs.length; c++) {
             
             // No transformations needed - Cellpose invocation method fixed the orientation issue
             print("  Image dimensions: " + getWidth() + " x " + getHeight());
-
+            
             print("  Opening ROI file: " + roi_path);
             // Initialize ROI Manager
             roiManager("reset");

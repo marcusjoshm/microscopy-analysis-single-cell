@@ -28,9 +28,9 @@ function contains(str, substring) {
 setBatchMode(true);
 
 // ----- Set Parent Directories -----
-roiParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/ROIs/";
-rawDataParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/combined_masks/";
-outputParent = "/Volumes/NX-01-A/2025-05-07_test_analysis/masks/";
+roiParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/ROIs/";
+rawDataParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/combined_masks/";
+outputParent = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/masks/";
 
 print("ROI directory: " + roiParent);
 print("Mask directory: " + rawDataParent);
@@ -102,8 +102,8 @@ for (d = 0; d < dishes.length; d++) {
                         
                         for (p = 1; p < parts.length; p++) {
                             // Stop when we hit a timepoint (t00, t01, etc) or channel (ch00, ch01, etc)
-                            if ((startsWith(parts[p], "t") && matches(substring(parts[p], 1), "[0-9]+")) ||
-                                (startsWith(parts[p], "ch") && matches(substring(parts[p], 2), "[0-9]+"))) {
+                            if ((startsWith(parts[p], "t") && lengthOf(parts[p]) > 1 && matches(substring(parts[p], 1), "[0-9]+")) ||
+                                (startsWith(parts[p], "ch") && lengthOf(parts[p]) > 2 && matches(substring(parts[p], 2), "[0-9]+"))) {
                                 break;
                             }
                             regionParts = Array.concat(regionParts, parts[p]);
@@ -161,7 +161,8 @@ for (d = 0; d < dishes.length; d++) {
             // Extract channel information if present
             channelPart = "";
             for (p = 0; p < parts.length; p++) {  
-                if (startsWith(parts[p], "ch") && lengthOf(parts[p]) >= 3) {
+                if (startsWith(parts[p], "ch") && lengthOf(parts[p]) >= 3 && 
+                    matches(substring(parts[p], 2), "[0-9]+")) {
                     channelPart = parts[p];
                     break;
                 }
@@ -187,29 +188,39 @@ for (d = 0; d < dishes.length; d++) {
                 }
             }
             
-            // Try pattern with duplicate timepoint
+            // Try to find any available mask file with a flexible approach
             if (!maskFileFound) {
-                testPath = maskFolder + "MASK_" + region + "_" + timepoint + "_" + timepoint + ".tif";
-                print("Looking for mask file: " + testPath);
-                if (File.exists(testPath)) {
-                    maskFilePath = testPath;
-                    maskFileFound = true;
-                    print("CONFIRMED: Found mask file: " + maskFilePath);
+                print("Looking for any available mask files with timepoint " + timepoint + " in " + maskFolder);
+                allMaskFiles = getFileList(maskFolder);
+                
+                // First try to find masks with matching timepoint
+                for (m = 0; m < allMaskFiles.length; m++) {
+                    if (startsWith(allMaskFiles[m], "MASK_") && endsWith(allMaskFiles[m], ".tif") && contains(allMaskFiles[m], timepoint)) {
+                        testPath = maskFolder + allMaskFiles[m];
+                        print("Found potential mask with matching timepoint: " + testPath);
+                        maskFilePath = testPath;
+                        maskFileFound = true;
+                        print("CONFIRMED: Using available mask file: " + maskFilePath);
+                        break;
+                    }
+                }
+                
+                // If still not found, use any available mask as last resort
+                if (!maskFileFound) {
+                    for (m = 0; m < allMaskFiles.length; m++) {
+                        if (startsWith(allMaskFiles[m], "MASK_") && endsWith(allMaskFiles[m], ".tif")) {
+                            testPath = maskFolder + allMaskFiles[m];
+                            print("Found potential mask file (any): " + testPath);
+                            maskFilePath = testPath;
+                            maskFileFound = true;
+                            print("CONFIRMED: Using available mask file as fallback: " + maskFilePath);
+                            break;
+                        }
+                    }
                 }
             }
             
-            // Try pattern with channel and duplicate timepoint
-            if (!maskFileFound && channelPart != "") {
-                testPath = maskFolder + "MASK_" + region + "_" + channelPart + "_" + timepoint + "_" + timepoint + ".tif";
-                print("Looking for mask file: " + testPath);
-                if (File.exists(testPath)) {
-                    maskFilePath = testPath;
-                    maskFileFound = true;
-                    print("CONFIRMED: Found mask file: " + maskFilePath);
-                }
-            }
-            
-            // List all available mask files if none were found
+            // If still not found, list all files and set error path
             if (!maskFileFound) {
                 print("ERROR: No mask file found. Looking through all files in the directory:");
                 allFiles = getFileList(maskFolder);

@@ -2,7 +2,7 @@
 # This script activates the Cellpose environment and runs Cellpose with the provided arguments
 
 # Path to Cellpose installation
-CELLPOSE_DIR="/Users/joshuamarcus/cellpose"
+CELLPOSE_DIR="/Users/leelab/cellpose"
 
 # Echo the command we're about to run (for debugging)
 echo "Activating Cellpose environment in $CELLPOSE_DIR"
