@@ -11,9 +11,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_masks/";
-flagFile = "/Volumes/NX-01-A/2025-05-07_test_analysis/grouped_masks/NEED_MORE_BINS.flag";
+cellsDir = "/Volumes/NX-01-A/2025-05-07_test_analysis_4/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-05-07_test_analysis_4/grouped_masks/";
+flagFile = "/Volumes/NX-01-A/2025-05-07_test_analysis_4/grouped_masks/NEED_MORE_BINS.flag";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -115,7 +115,11 @@ for (d = 0; d < dishDirs.length; d++) {
                 // After ROI selection but before thresholding, ask if more bins are needed
                 Dialog.create("Evaluate Cell Grouping");
                 Dialog.addMessage("Based on what you see in this image, do you want to:");
-                Dialog.addChoice("Decision:", newArray("Continue with thresholding", "Go back and add one more group"));
+                Dialog.addChoice("Decision:", newArray(
+                    "Continue with thresholding", 
+                    "Go back and add one more group",
+                    "Ignore thresholding for this group. There are no structures to threshold in the field"
+                ));
                 Dialog.show();
                 
                 userBinsDecision = Dialog.getChoice();
@@ -128,12 +132,29 @@ for (d = 0; d < dishDirs.length; d++) {
                     eval("script", "System.exit(0);");
                 }
                 
-                // Apply Otsu thresholding directly
-                setAutoThreshold("Otsu dark 16-bit");
-                
-                // Convert to mask
-                setOption("BlackBackground", true);
-                run("Convert to Mask");
+                // Handle case when there are no structures to threshold
+                if (userBinsDecision == "Ignore thresholding for this group. There are no structures to threshold in the field") {
+                    print("User indicated no structures to threshold - creating empty mask");
+                    
+                    // Create a completely black mask (all pixels = 0)
+                    run("Select All");
+                    run("Clear", "slice");
+                    
+                    // Make sure we have a binary image with all black pixels
+                    setOption("BlackBackground", true);
+                    // Skip Convert to Mask which would turn it to 255 values
+                    // Instead manually set as 8-bit binary image with all zeros
+                    run("8-bit");
+                    setMinAndMax(0, 0);
+                    run("Apply LUT", "slice");
+                } else {
+                    // Apply Otsu thresholding directly for normal case
+                    setAutoThreshold("Otsu dark 16-bit");
+                    
+                    // Convert to mask
+                    setOption("BlackBackground", true);
+                    run("Convert to Mask");
+                }
                 
                 // Create matching output directory structure
                 outFolder = outputDir + dishName + "/" + timeName + "/";
