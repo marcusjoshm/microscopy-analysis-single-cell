@@ -401,6 +401,8 @@ Once the ImageJ macros complete, ImageJ will launch again for guided thresholdin
    
 7. When satisfied with the ROI placement, click **OK** on the pop-up window
 
+> **Note:** If an acceptable ROI placement doesn't exist, draw an ROI anywhere and press `OK`. There will be options later to handle situations like this.
+
 8. A new window titled "**Evaluate Cell Grouping**" will appear with the message:
    ```
    Based on what you see in this image, do you want to:
