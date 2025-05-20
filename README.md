@@ -23,6 +23,8 @@ This document provides step-by-step instructions for running our single cell ana
 
 This workflow is designed to work seamlessly with data exported directly from LASX. It relies on the file naming and directory structure used by LASX when images are exported as .tiff files. From LASX, highlight the images you want to export from the `Open projects` tab. Right click and select "Export Image". Make a new folder in the E drive to export your data and click OK. Make sure "Export Channels" is checked and RAW image is selected, then click Save. Copy the export folder to the LEELAB surver from the microscope PC. You can now proceed to analysis on the lab Macbook Pro.
 
+> **Important:** Avoid using a `+` when naming files. It will cause the workflow to fail.
+> 
 ### Opening Terminal
 
 1. Press Command + Space to open Spotlight Search
