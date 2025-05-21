@@ -457,22 +457,22 @@ At this point, your analysis is complete and the results are ready for review.
 
 ### Terminal Navigation
 
-### Terminal Navigation
-
 Here are some helpful tips for using the Terminal efficiently, saving you a lot of time when running this workflow. 
 
 1. **Command History**:
    - Press the **Up Arrow** key to cycle through previously entered commands. The command for running the workflow is long, so by entering the command each time, you can press the **up** key and change the output folder name when analyzing a large dataset. 
    - Type part of a previous command and then press **Up Arrow** to search through history for commands that match what you've typed. Let's say you want to rerun the workflow but don't want to type out the entire command. However, someone used the Terminal before you, and the previous workflow commands are far back in history. You can type `python sing` and then press the **up** key, and the Terminal will only cycle through commands that start with `python sing`.
+
 2. **Tab Completion**:
    - Press the **Tab** key to auto-complete file and directory names. This will save you lots of time if you prefer to type out commands rather than copy and paste from the protocol. For example, to remove spaces from file names without coping and pasting the commands from the protocol, you can type `cd ~/ba` then `tab`, and if there are no other directories that start with "ba," it will fill in `cd ~/bash_scripts`. Similarly, if your working directory is `/Users/leelab/bash_scripts` and you type `./r` followed by `tab`, it will fill in `./replace_spaces.sh`.
+
 3. **Text Navigation**:
 The following are useful commands for typing in the Terminal:
    - **Control + A**: Move cursor to the beginning of the line
    - **Control + E**: Move cursor to the end of the line
    - **Control + U**: Clear the line before the cursor
    - **Control + K**: Clear the line after the cursor
-     
+
 ## Troubleshooting
 
 ### Common Errors and Solutions
