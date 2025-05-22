@@ -32,11 +32,17 @@ except ImportError:
     HAVE_TIFFFILE = False
 from sklearn.mixture import GaussianMixture
 from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+from scipy import stats
+import re
+import shutil
+import json
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    stream=sys.stdout  # Ensure logging goes to stdout for visibility
 )
 logger = logging.getLogger("CellGrouper")
 
@@ -175,6 +181,50 @@ def find_cell_directories(cells_dir):
                 cell_dirs.append((condition_name, region_dir))
     
     return cell_dirs
+
+def resize_image_to_target(img, target_height, target_width):
+    """
+    Resize an image to the target dimensions, maintaining aspect ratio and adding padding if needed.
+    
+    Args:
+        img (numpy.ndarray): Input image
+        target_height (int): Target height
+        target_width (int): Target width
+        
+    Returns:
+        numpy.ndarray: Resized image with padding if necessary
+    """
+    # Get original dimensions
+    height, width = img.shape[:2]
+    
+    # Calculate aspect ratios
+    img_aspect = width / height
+    target_aspect = target_width / target_height
+    
+    # Resize image while maintaining aspect ratio
+    if img_aspect > target_aspect:
+        # Image is wider than target aspect ratio
+        new_width = target_width
+        new_height = int(new_width / img_aspect)
+    else:
+        # Image is taller than target aspect ratio
+        new_height = target_height
+        new_width = int(new_height * img_aspect)
+    
+    # Resize the image
+    resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+    
+    # Create a black canvas of the target size
+    result = np.zeros((target_height, target_width), dtype=img.dtype)
+    
+    # Calculate padding to center the image
+    pad_top = (target_height - new_height) // 2
+    pad_left = (target_width - new_width) // 2
+    
+    # Place the resized image on the canvas
+    result[pad_top:pad_top+new_height, pad_left:pad_left+new_width] = resized
+    
+    return result
 
 def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clusters=False, verbose=False):
     """
@@ -465,11 +515,34 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
     for old_label, new_label in label_mapping.items():
         logger.info(f"  Cluster {old_label} (mean: {cluster_means[old_label]:.2f}) -> Group {new_label+1}")
     
+    # First pass: determine maximum dimensions for each group
+    group_dimensions = {}
+    for i in range(actual_num_bins):
+        group_dimensions[i] = (0, 0)  # (height, width)
+    
+    # Find the maximum dimensions for each group
+    for idx, (filename, _, img, _) in enumerate(image_data):
+        original_label = labels[idx]
+        # Map to sorted group index
+        if original_label in label_mapping:
+            mapped_label = label_mapping[original_label]
+        else:
+            # This shouldn't happen, but just in case
+            mapped_label = original_label % actual_num_bins
+        
+        # Get image dimensions
+        if img is not None:
+            height, width = img.shape[:2]
+            current_height, current_width = group_dimensions[mapped_label]
+            group_dimensions[mapped_label] = (max(current_height, height), max(current_width, width))
+    
+    logger.info(f"Maximum dimensions for each group: {group_dimensions}")
+    
     # Initialize list to hold summed images for each group
     sum_images = [None] * actual_num_bins
     cell_counts = [0] * actual_num_bins
     
-    # Group images using the mapped labels and sum them
+    # Second pass: resize images to match group dimensions and sum them
     for idx, (filename, auc_value, img, metadata) in enumerate(image_data):
         original_label = labels[idx]
         # Only use label mapping if we have the original label in the mapping
@@ -478,10 +551,23 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
         else:
             # This shouldn't happen, but just in case
             mapped_label = original_label % actual_num_bins
-            
+        
+        # Get target dimensions for this group
+        target_height, target_width = group_dimensions[mapped_label]
+        
+        if target_height == 0 or target_width == 0:
+            logger.warning(f"Zero dimensions for group {mapped_label + 1}, skipping image {filename}")
+            continue
+        
+        # Resize image to target dimensions
+        resized_img = resize_image_to_target(img, target_height, target_width)
+        
+        # Initialize sum image if needed
         if sum_images[mapped_label] is None:
-            sum_images[mapped_label] = np.zeros_like(img, dtype=np.float64)
-        sum_images[mapped_label] += img.astype(np.float64)
+            sum_images[mapped_label] = np.zeros((target_height, target_width), dtype=np.float64)
+        
+        # Add resized image to sum
+        sum_images[mapped_label] += resized_img.astype(np.float64)
         cell_counts[mapped_label] += 1
     
     # Create output directory if it doesn't exist

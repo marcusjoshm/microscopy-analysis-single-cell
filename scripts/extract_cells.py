@@ -13,8 +13,10 @@ import sys
 import argparse
 import subprocess
 import logging
+import tempfile
+import time
+import re
 from pathlib import Path
-import glob
 
 # Set up logging
 logging.basicConfig(
@@ -24,461 +26,339 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CellExtractor")
 
-def create_macro_file(roi_dir, raw_data_dir, output_dir, auto_close=False):
+def create_imagej_macro(roi_file, image_file, output_dir, headless=False, auto_close=False):
     """
-    Create an ImageJ macro file for extracting individual cells.
+    Create an ImageJ macro to extract cells from an image file using ROIs.
     
     Args:
-        roi_dir (str): Directory containing ROI files
-        raw_data_dir (str): Directory containing original images
-        output_dir (str): Directory where individual cells will be saved
-        auto_close (bool): Whether to add a line to close ImageJ when the macro completes
+        roi_file: Path to the ROI file
+        image_file: Path to the raw image file
+        output_dir: Directory to save extracted cell images
+        headless: Whether to run in headless mode
+        auto_close: Whether to close ImageJ when done
         
     Returns:
-        str: Path to the created macro file
+        Path to the generated macro file
     """
-    # Create a macro file
-    macro_file = Path("macros/temp_extract_cells.ijm")
+    # Ensure paths use forward slashes for ImageJ
+    roi_file_path = str(roi_file).replace('\\', '/')
+    image_file_path = str(image_file).replace('\\', '/')
+    output_dir_path = str(output_dir).replace('\\', '/')
     
-    # Ensure the directory exists
-    macro_file.parent.mkdir(parents=True, exist_ok=True)
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
     
-    # Log the actual input directories to help diagnose issues
-    logger.info(f"ROI directory: {roi_dir}")
-    logger.info(f"Raw data directory: {raw_data_dir}")
-    logger.info(f"Output directory: {output_dir}")
+    # Create a temporary macro file
+    macro_file = "macros/temp_extract_cells.ijm"
+    os.makedirs(os.path.dirname(macro_file), exist_ok=True)
     
-    # Check if ROI directory has any zip files
-    roi_files = list(Path(roi_dir).glob("**/*.zip"))
-    logger.info(f"Found {len(roi_files)} ROI zip files in ROI directory")
-    for roi_file in roi_files:
-        logger.info(f"ROI file: {roi_file}")
-    
-    # Check if raw data directory has any tif files
-    tif_files = list(Path(raw_data_dir).glob("**/*.tif"))
-    logger.info(f"Found {len(tif_files)} TIF files in raw data directory")
-    for tif_file in tif_files[:5]:  # Only show first 5 to avoid flooding logs
-        logger.info(f"TIF file: {tif_file}")
-    if len(tif_files) > 5:
-        logger.info(f"...and {len(tif_files)-5} more TIF files")
-    
-    # Build the macro content in parts to avoid formatting issues
-    macro_content = """
-// ----- Helper Functions -----
-function startsWith(str, prefix) {
-    result = substring(str, 0, lengthOf(prefix));
-    if (result == prefix)
-        return 1;
-    else
-        return 0;
-}
+    # Create the macro content
+    macro_content = f"""// Cell Extraction Macro
+// Extracts individual cells from an image file using ROIs
 
-function endsWith(str, suffix) {
-    result = substring(str, lengthOf(str) - lengthOf(suffix), lengthOf(str));
-    if (result == suffix)
-        return 1;
-    else
-        return 0;
-}
+// Input parameters
+roiFile = "{roi_file_path}";
+imageFile = "{image_file_path}";
+outputDir = "{output_dir_path}";
 
-// ----- Set Parent Directories -----
+// Print parameters for debugging
+print("ROI file: " + roiFile);
+print("Image file: " + imageFile);
+print("Output directory: " + outputDir);
+
+// Create output directory if it doesn't exist
+File.makeDirectory(outputDir);
+
+// Reset ROI Manager
+roiManager("reset");
+
+// Open ROIs
+print("Opening ROI file");
+roiManager("Open", roiFile);
+roi_count = roiManager("count");
+print("Found " + roi_count + " ROIs");
+
+if (roi_count == 0) {{
+    print("No ROIs found in file: " + roiFile);
+    exit("No ROIs found");
+}}
+
+// Open the image
+print("Opening image file");
+open(imageFile);
+if (nImages == 0) {{
+    print("Failed to open image: " + imageFile);
+    exit("Failed to open image");
+}}
+
+// Get the title of the open image
+regionTitle = getTitle();
+print("Image opened: " + regionTitle);
+
+// Set batch mode for faster processing
+setBatchMode(true);
+
+// Process each ROI
+for (i = 0; i < roi_count; i++) {{
+    // Duplicate the region image so the original remains unaltered.
+    selectWindow(regionTitle);
+    run("Duplicate...", "title=TempRegion duplicate");
+    
+    // Apply the ROI (from the ROI Manager) to the duplicate.
+    roiManager("select", i);
+    nslices = nSlices();
+    for (s = 1; s <= nslices; s++) {{
+        setSlice(s);
+        run("Clear Outside");
+    }}
+    
+    // Save the cell
+    cell_num = i + 1;
+    cell_path = outputDir + "/CELL" + cell_num + ".tif";
+    print("Saving cell " + cell_num + " to: " + cell_path);
+    saveAs("Tiff", cell_path);
+    
+    // Close the duplicate
+    close();
+}}
+
+// Close the original image
+selectWindow(regionTitle);
+close();
+
+// Clear ROI Manager
+roiManager("reset");
+
+// Turn off batch mode
+setBatchMode(false);
+
+print("Cell extraction completed for " + roi_count + " cells");
+
+// Auto-close if requested
 """
     
-    # Add directory paths (this avoids format string issues)
-    macro_content += f'roiParent = "{roi_dir}/";\n'
-    macro_content += f'rawDataParent = "{raw_data_dir}/";\n'
-    macro_content += f'outputParent = "{output_dir}/";\n\n'
-    
-    # Continue with the rest of the macro
-    macro_content += """
-// Ensure trailing slashes for path concatenation
-if (!endsWith(roiParent, "/")) roiParent = roiParent + "/";
-if (!endsWith(rawDataParent, "/")) rawDataParent = rawDataParent + "/";
-if (!endsWith(outputParent, "/")) outputParent = outputParent + "/";
-
-print("ROI directory: " + roiParent);
-print("Raw data directory: " + rawDataParent);
-print("Output directory: " + outputParent);
-
-// Get list of dish directories in the ROIs parent folder.
-dishes = getFileList(roiParent);
-print("Found " + dishes.length + " entries in ROI parent directory");
-
-for (d = 0; d < dishes.length; d++) {
-    dishName = dishes[d];
-    print("Checking entry: " + dishName);
-    
-    // Skip hidden files and non-directories
-    if (startsWith(dishName, ".") || !File.isDirectory(roiParent + dishName)) {
-        print("Skipping " + dishName + " (not a directory or hidden)");
-        continue;
-    }
-    
-    roiFolder = roiParent + dishName;
-    // Ensure trailing slash
-    if (!endsWith(roiFolder, "/")) roiFolder = roiFolder + "/";
-    
-    // Get all subdirectories in the raw data condition directory
-    conditionFolder = rawDataParent + dishName;
-    if (!File.exists(conditionFolder)) {
-        print("Raw data condition directory not found: " + conditionFolder);
-        continue;
-    }
-    
-    print("Looking for subdirectories in: " + conditionFolder);
-    subdirs = getFileList(conditionFolder);
-    
-    // Process each subdirectory
-    for (s = 0; s < subdirs.length; s++) {
-        subdir = subdirs[s];
-        // Skip non-directories and hidden folders
-        if (!File.isDirectory(conditionFolder + "/" + subdir) || indexOf(subdir, ".") == 0) {
-            continue;
-        }
-        
-        // Full path to the subdirectory
-        regionFolder = conditionFolder + "/" + subdir;
-        print("Processing subdirectory: " + regionFolder);
-        
-        // Ensure trailing slash
-        if (!endsWith(regionFolder, "/")) regionFolder = regionFolder + "/";
-        
-        // Get the list of ROI files in this dish folder.
-        print("Looking for ROI files in: " + roiFolder);
-        roiFiles = getFileList(roiFolder);
-        print("Found " + roiFiles.length + " files in ROI folder");
-        
-        // Try different ROI file prefixes
-        prefixes = newArray("ROIs_R_", "ROIs_");
-        
-        for (r = 0; r < roiFiles.length; r++) {
-            fileName = roiFiles[r];
-            print("Checking file: " + fileName);
-            
-            // Skip non-zip files
-            if (!endsWith(fileName, "_rois.zip") && !endsWith(fileName, ".zip")) {
-                print("Skipping non-zip file: " + fileName);
-                continue;
-            }
-            
-            // Try to match any of our prefixes
-            foundPrefix = false;
-            prefixUsed = "";
-            
-            for (p = 0; p < prefixes.length; p++) {
-                if (startsWith(fileName, prefixes[p])) {
-                    foundPrefix = true;
-                    prefixUsed = prefixes[p];
-                    break;
-                }
-            }
-            
-            if (!foundPrefix) {
-                print("No matching prefix for: " + fileName);
-                continue;
-            }
-            
-            // Derive the base name by removing the prefix and trailing "_rois.zip"
-            baseName = "";
-            if (endsWith(fileName, "_rois.zip")) {
-                baseName = substring(fileName, lengthOf(prefixUsed), indexOf(fileName, "_rois.zip"));
-            } else if (endsWith(fileName, ".zip")) {
-                baseName = substring(fileName, lengthOf(prefixUsed), indexOf(fileName, ".zip"));
-            }
-            
-            print("Base name: " + baseName);
-            
-            // Use a more flexible approach to match filenames
-            possibleBaseNames = newArray(1);
-            possibleBaseNames[0] = baseName;
-            
-            // No longer add R_ prefix - rely on flexible matching instead
-            
-            // Try different image extensions
-            extensions = newArray(".tif", ".tiff", ".TIF", ".TIFF");
-            regionImagePath = "";
-            
-            // Get a list of subdirectories in the region folder
-            print("Checking subdirectories in region folder: " + regionFolder);
-            regionSubdirs = getFileList(regionFolder);
-            
-            // Try directly in the region folder first
-            for (n = 0; n < 2; n++) {
-                for (e = 0; e < extensions.length; e++) {
-                    testPath = regionFolder + possibleBaseNames[n] + extensions[e];
-                    print("Trying image path: " + testPath);
-                    
-                    if (File.exists(testPath)) {
-                        regionImagePath = testPath;
-                        print("Found image: " + regionImagePath);
-                        break;
-                    }
-                }
-                if (regionImagePath != "") break;  // Stop if we found an image
-            }
-            
-            // If not found directly, try in each subdirectory
-            if (regionImagePath == "") {
-                print("Image not found directly, checking subdirectories...");
-                
-                for (sd = 0; sd < regionSubdirs.length; sd++) {
-                    subdir = regionSubdirs[sd];
-                    
-                    // Skip non-directories and hidden folders
-                    if (!File.isDirectory(regionFolder + subdir) || indexOf(subdir, ".") == 0) {
-                        continue;
-                    }
-                    
-                    print("Checking in subdirectory: " + subdir);
-                    subdirPath = regionFolder + subdir;
-                    // Ensure trailing slash
-                    if (!endsWith(subdirPath, "/")) subdirPath = subdirPath + "/";
-                    
-                    for (n = 0; n < 2; n++) {
-                        for (e = 0; e < extensions.length; e++) {
-                            testPath = subdirPath + possibleBaseNames[n] + extensions[e];
-                            print("Trying image path: " + testPath);
-                            
-                            if (File.exists(testPath)) {
-                                regionImagePath = testPath;
-                                print("Found image: " + regionImagePath);
-                                break;
-                            }
-                        }
-                        if (regionImagePath != "") break;  // Stop if we found an image
-                    }
-                    if (regionImagePath != "") break;  // Stop if we found an image
-                }
-            }
-            
-            if (regionImagePath == "") {
-                print("No matching image found for base name: " + baseName);
-                continue;
-            }
-            
-            // Extract the region identifier from the image path, not just the base name
-            print("DEBUG - Analyzing for region using file path: " + regionImagePath);
-            region = "";
-            
-            // IMPROVED: Extract the original region name directly from the filename
-            // This should match the region names selected by the user at the workflow start
-            
-            // Extract the full base name from the original file and use it as the region
-            // This preserves the exact region names that were selected by the user
-            extractedRegion = "";
-            
-            // Remove the ROIs_ prefix and _rois.zip suffix to get the original region name
-            if (startsWith(fileName, "ROIs_")) {
-                extractedPart = substring(fileName, 5);  // Remove "ROIs_" prefix
-                if (endsWith(extractedPart, "_rois.zip")) {
-                    // Remove "_rois.zip" suffix
-                    extractedPart = substring(extractedPart, 0, lengthOf(extractedPart) - 9);
-                    extractedRegion = extractedPart;
-                } else if (endsWith(extractedPart, ".zip")) {
-                    // Remove ".zip" suffix
-                    extractedPart = substring(extractedPart, 0, lengthOf(extractedPart) - 4);
-                    extractedRegion = extractedPart;
-                }
-            }
-            
-            // If extraction worked, use it as our region
-            if (extractedRegion != "") {
-                // Clean up any channel or timepoint suffixes if present
-                channelIndex = indexOf(extractedRegion, "_ch");
-                if (channelIndex > 0) {
-                    extractedRegion = substring(extractedRegion, 0, channelIndex);
-                }
-                
-                region = extractedRegion;
-                print("Extracted original region name from ROI file: " + region);
-            } 
-            // Fallback to other methods if the extraction didn't work
-            else {
-                // Try to use the basename directly
-                region = baseName;
-                print("Using base name as region: " + region);
-            }
-            
-            print("Identified region: " + region);
-            
-            // Determine the timepoint from the baseName.
-            // Add debugging for timepoint matching
-            print("DEBUG - Analyzing for timepoint: " + baseName);
-            timepoint = "";
-            timeLabel = "";
-            
-            if (indexOf(baseName, "t00") >= 0) {
-                timepoint = "t00";
-                timeLabel = "t00";
-                print("DEBUG - Matched t00 timepoint");
-            } else if (indexOf(baseName, "t03") >= 0) {
-                timepoint = "t03";
-                timeLabel = "t03";
-                print("DEBUG - Matched t03 timepoint");
-            } else {
-                print("DEBUG - No explicit timepoint found, checking for timepoint_1 in folder structure");
-                // Try to extract timepoint from folder structure if not in filename
-                if (indexOf(regionFolder, "timepoint_1") >= 0) {
-                    timepoint = "t00";  // Map timepoint_1 to t00
-                    timeLabel = "t00";
-                    print("DEBUG - Using t00 based on timepoint_1 folder");
-                } else {
-                    print("Timepoint not found in: " + baseName + " or folder structure");
-                    continue;
-                }
-            }
-            
-            print("Identified timepoint: " + timepoint + " -> " + timeLabel);
-            
-            // Open the ROI Manager and load this ROI file.
-            roiManager("Reset");
-            roiFilePath = roiFolder + fileName;
-            print("Opening ROI file: " + roiFilePath);
-            roiManager("Open", roiFilePath);
-            nRois = roiManager("count");
-            print("Processing " + dishName + " " + region + " " + timeLabel + ": Found " + nRois + " ROIs.");
-            
-            if (nRois == 0) {
-                print("No ROIs found in file: " + roiFilePath);
-                continue;
-            }
-            
-            // Open the corresponding region image
-            print("Opening image: " + regionImagePath);
-            open(regionImagePath);
-            regionTitle = getTitle();
-            
-            // No transformations needed - Cellpose invocation method fixed the orientation issue
-            print("Image dimensions: " + getWidth() + " x " + getHeight());
-            
-            print("Opened region image: " + regionTitle + " (" + regionImagePath + ")");
-            
-            // Set up the output folder for processed cells.
-            outputFolder = outputParent + dishName + "/" + region + "_" + timeLabel + "/";
-            print("Output folder for cells: " + outputFolder);
-            if (!File.exists(outputFolder)) {
-                print("Creating output directory: " + outputFolder);
-                File.makeDirectory(outputFolder);
-            }
-            
-            // Loop over each ROI in the ROI Manager.
-            for (i = 0; i < nRois; i++) {
-                // Duplicate the region image so the original remains unaltered.
-                selectWindow(regionTitle);
-                run("Duplicate...", "title=TempRegion duplicate");
-                
-                // Apply the ROI (from the ROI Manager) to the duplicate.
-                roiManager("select", i);
-                nslices = nSlices();
-                for (s = 1; s <= nslices; s++) {
-                    setSlice(s);
-                    run("Clear Outside");
-                }
-                
-                // Build the save path and filename.
-                cellNum = i + 1;
-                savePath = outputFolder + "CELL" + cellNum + ".tif";
-                print("Saving cell " + cellNum + " to: " + savePath);
-                saveAs("Tiff", savePath);
-                
-                // Close the duplicate image.
-                close();
-            }
-            
-            // Close the original region image and reset ROI Manager.
-            selectWindow(regionTitle);
-            close();
-            roiManager("Reset");
-        }
-    }
-}
-print("Completed extracting individual cells");
-"""
-    
-    # Add auto-close line if requested
+    # Add auto-close command if requested
     if auto_close:
-        macro_content += '\n// Close ImageJ when done\neval("script", "System.exit(0);");\n'
+        if headless:
+            macro_content += """
+// Exit ImageJ
+run("Quit");
+"""
+        else:
+            macro_content += """
+// Exit ImageJ
+eval("script", "System.exit(0);");
+"""
     
-    # Write the macro content to the file
+    # Write the macro to file
     with open(macro_file, 'w') as f:
         f.write(macro_content)
     
     logger.info(f"Created macro file: {macro_file}")
-    return str(macro_file)
+    return macro_file
 
-def run_imagej_macro(imagej_path, macro_file, auto_close=False):
+def run_imagej_macro(imagej_path, macro_path, headless=False):
     """
-    Run ImageJ with a given macro and arguments.
+    Run an ImageJ macro.
     
     Args:
-        imagej_path (str): Path to the ImageJ executable
-        macro_file (str): Path to the ImageJ macro file
-        auto_close (bool): Whether the macro will automatically close ImageJ
+        imagej_path: Path to the ImageJ executable
+        macro_path: Path to the macro file
+        headless: Whether to run in headless mode
         
     Returns:
-        bool: True if successful, False otherwise
+        True if successful, False otherwise
     """
+    # Build the command
+    cmd = [imagej_path]
+    
+    if headless:
+        cmd.extend(['-batch', macro_path])
+    else:
+        cmd.extend(['-macro', macro_path])
+    
+    logger.info(f"Running ImageJ command: {cmd}")
+    
+    # Run the command
     try:
-        # Validate paths before running
-        if not os.path.exists(imagej_path):
-            logger.error(f"ImageJ executable not found at: {imagej_path}")
-            return False
-        
-        if not os.path.exists(macro_file):
-            logger.error(f"Macro file not found at: {macro_file}")
-            return False
-        
-        cmd = [imagej_path, '-macro', macro_file]
-        
-        logger.info(f"Running ImageJ command: {cmd}")
-        logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
-        
-        result = subprocess.run(
+        process = subprocess.run(
             cmd,
+            check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            check=False  # Don't raise an exception on non-zero return code
+            text=True
         )
         
-        # Log the output
-        if result.stdout:
-            # Split by lines for better readability in logs
-            for line in result.stdout.splitlines():
-                if line.strip():  # Only log non-empty lines
-                    logger.info(f"ImageJ output: {line}")
+        # Log output
+        if process.stdout:
+            for line in process.stdout.splitlines():
+                logger.info(f"ImageJ output: {line}")
         
-        if result.stderr:
-            for line in result.stderr.splitlines():
-                if line.strip():
-                    logger.warning(f"ImageJ error: {line}")
+        if process.stderr:
+            for line in process.stderr.splitlines():
+                logger.warning(f"ImageJ error: {line}")
         
-        # Check if the command executed successfully
-        if result.returncode != 0:
-            logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
-            return False
-        
-        # Verify that cells were actually created
-        output_dirs = []
-        for line in result.stdout.splitlines():
-            if "Output folder for cells:" in line:
-                output_dir = line.split("Output folder for cells:")[1].strip()
-                output_dirs.append(output_dir)
-        
-        for output_dir in output_dirs:
-            # Check if any cell files were created
-            try:
-                cell_files = list(Path(output_dir).glob("CELL*.tif"))
-                logger.info(f"Found {len(cell_files)} cell files in {output_dir}")
-                if len(cell_files) == 0:
-                    logger.warning(f"No cell files were created in {output_dir}")
-            except Exception as e:
-                logger.warning(f"Error checking cell files in {output_dir}: {e}")
+        # Check if cells were created even if ImageJ reported an error
+        # Sometimes ImageJ returns error codes but still processes the cells
+        time.sleep(1)  # Small delay to ensure files are written
         
         return True
+    
     except Exception as e:
-        logger.error(f"Error running ImageJ: {e}", exc_info=True)
+        logger.error(f"Error running ImageJ: {e}")
         return False
+
+def find_image_for_roi(roi_file, raw_data_dir):
+    """
+    Find the corresponding image file for a ROI file.
+    
+    Args:
+        roi_file: Path to the ROI file
+        raw_data_dir: Directory containing raw data
+        
+    Returns:
+        Path to the corresponding image file, or None if not found
+    """
+    # Extract metadata from ROI filename
+    roi_path = Path(roi_file)
+    roi_filename = roi_path.name
+    
+    # Get the condition from the parent directory
+    condition = roi_path.parent.name
+    condition_dir = Path(raw_data_dir) / condition
+    
+    logger.info(f"Looking for image file for ROI: {roi_filename}")
+    logger.info(f"Condition: {condition}")
+    
+    # Parse ROI filename to extract components
+    # Example: ROIs_R_1_Merged_ch01_t00_rois.zip
+    
+    # Remove the ROIs_ prefix and _rois.zip suffix
+    cleaned_name = roi_filename
+    if cleaned_name.startswith("ROIs_"):
+        cleaned_name = cleaned_name[5:]  # Remove "ROIs_"
+    
+    if cleaned_name.endswith("_rois.zip"):
+        cleaned_name = cleaned_name[:-9]  # Remove "_rois.zip"
+    elif cleaned_name.endswith(".zip"):
+        cleaned_name = cleaned_name[:-4]  # Remove ".zip"
+    
+    logger.info(f"Cleaned ROI name: {cleaned_name}")
+    
+    # Extract components using regex
+    channel_match = re.search(r'_(ch\d+)_', cleaned_name)
+    timepoint_match = re.search(r'_(t\d+)(?:_|$)', cleaned_name)
+    
+    # Default to empty strings if not found
+    channel = channel_match.group(1) if channel_match else ""
+    timepoint = timepoint_match.group(1) if timepoint_match else ""
+    
+    # The region is the remaining part of the name
+    # For example, if cleaned_name is "R_1_Merged_ch01_t00", 
+    # and we remove "_ch01_t00", we get "R_1_Merged"
+    region = cleaned_name
+    if channel:
+        region = region.replace(f"_{channel}", "")
+    if timepoint:
+        region = region.replace(f"_{timepoint}", "")
+    
+    # Clean up any trailing underscores
+    region = region.rstrip("_")
+    
+    logger.info(f"Extracted components - Region: {region}, Channel: {channel}, Timepoint: {timepoint}")
+    
+    # Use the extracted components to find the image file
+    # Look in all subdirectories of the condition directory
+    image_pattern = f"{region}_{channel}_{timepoint}.tif"
+    logger.info(f"Looking for image file matching pattern: {image_pattern}")
+    
+    # Use recursive glob to find the file
+    possible_files = list(condition_dir.glob(f"**/{image_pattern}"))
+    
+    if possible_files:
+        logger.info(f"Found matching image file: {possible_files[0]}")
+        return possible_files[0]
+    
+    # If not found with the pattern, search more broadly
+    logger.warning(f"No exact match found, trying more flexible search")
+    
+    # Try partial matches based on region, channel, and timepoint
+    for subdir in condition_dir.glob("**"):
+        if subdir.is_dir():
+            logger.debug(f"Searching in subdirectory: {subdir}")
+            
+            # Look for files matching parts of the pattern
+            for file in subdir.glob("*.tif"):
+                filename = file.name
+                
+                # Check if the filename contains all the extracted components
+                matches_region = region in filename
+                matches_channel = channel in filename if channel else True
+                matches_timepoint = timepoint in filename if timepoint else True
+                
+                if matches_region and matches_channel and matches_timepoint:
+                    logger.info(f"Found partial match: {file}")
+                    return file
+    
+    logger.error(f"No matching image file found for ROI: {roi_filename}")
+    return None
+
+def create_output_dir_for_roi(roi_file, output_base_dir):
+    """
+    Create an appropriate output directory structure for extracted cells.
+    
+    Args:
+        roi_file: Path to the ROI file
+        output_base_dir: Base directory for outputs
+        
+    Returns:
+        Path to the output directory for cells
+    """
+    # Extract metadata from ROI filename
+    roi_path = Path(roi_file)
+    roi_filename = roi_path.name
+    
+    # Get the condition from the parent directory
+    condition = roi_path.parent.name
+    
+    # Extract components from the ROI filename
+    # Example: ROIs_R_1_Merged_ch01_t00_rois.zip
+    
+    # Remove the ROIs_ prefix and _rois.zip suffix
+    cleaned_name = roi_filename
+    if cleaned_name.startswith("ROIs_"):
+        cleaned_name = cleaned_name[5:]  # Remove "ROIs_"
+    
+    if cleaned_name.endswith("_rois.zip"):
+        cleaned_name = cleaned_name[:-9]  # Remove "_rois.zip"
+    elif cleaned_name.endswith(".zip"):
+        cleaned_name = cleaned_name[:-4]  # Remove ".zip"
+    
+    # Extract components using regex
+    channel_match = re.search(r'_(ch\d+)_', cleaned_name)
+    timepoint_match = re.search(r'_(t\d+)(?:_|$)', cleaned_name)
+    
+    # Default to empty strings if not found
+    channel = channel_match.group(1) if channel_match else ""
+    timepoint = timepoint_match.group(1) if timepoint_match else ""
+    
+    # Remove channel and timepoint parts to get the region
+    region = cleaned_name
+    if channel:
+        region = region.replace(f"_{channel}", "")
+    if timepoint:
+        region = region.replace(f"_{timepoint}", "")
+    
+    # Clean up any trailing underscores
+    region = region.rstrip("_")
+    
+    # Create the output directory structure
+    # Format: output_base_dir/condition/region_timepoint
+    output_dir = Path(output_base_dir) / condition / f"{region}_{timepoint}"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    logger.info(f"Created output directory: {output_dir}")
+    return output_dir
 
 def main():
     """Main function to extract individual cells."""
@@ -502,6 +382,8 @@ def main():
                         help='Close ImageJ when the macro completes')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable more verbose logging')
+    parser.add_argument('--headless', action='store_true',
+                        help='Run ImageJ in headless mode')
     
     args = parser.parse_args()
     
@@ -513,38 +395,108 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Validate ROI directory structure
-    try:
-        roi_dir = Path(args.roi_dir)
-        if not roi_dir.exists():
-            logger.error(f"ROI directory does not exist: {roi_dir}")
-            return 1
-        
-        # Check what's in the ROI directory
-        logger.info(f"ROI directory contents:")
-        for item in roi_dir.iterdir():
-            if item.is_dir():
-                logger.info(f"  Directory: {item.name}")
-                # Check for ROI files in subdirectory
-                roi_files = list(item.glob("*.zip"))
-                logger.info(f"    Found {len(roi_files)} ROI files in {item.name}")
-                for roi_file in roi_files:
-                    logger.info(f"      ROI file: {roi_file.name}")
-    except Exception as e:
-        logger.error(f"Error checking ROI directory structure: {e}")
-    
-    # Create the ImageJ macro
-    macro_file = create_macro_file(args.roi_dir, args.raw_data_dir, args.output_dir, args.auto_close)
-    
-    # Run the ImageJ macro
-    success = run_imagej_macro(args.imagej, macro_file, args.auto_close)
-    
-    if success:
-        logger.info("Cell extraction completed successfully")
-        return 0
-    else:
-        logger.error("Cell extraction failed")
+    # Find all ROI files in the ROI directory
+    roi_dir = Path(args.roi_dir)
+    if not roi_dir.exists():
+        logger.error(f"ROI directory does not exist: {roi_dir}")
         return 1
+    
+    # Find all ROI files in all subdirectories of the ROI directory
+    roi_files = []
+    
+    # Check what's in the ROI directory
+    logger.info(f"ROI directory contents:")
+    for condition_dir in roi_dir.glob("*"):
+        if condition_dir.is_dir() and not condition_dir.name.startswith('.'):
+            logger.info(f"  Directory: {condition_dir.name}")
+            # Check for ROI files in this condition directory
+            condition_roi_files = list(condition_dir.glob("*.zip"))
+            logger.info(f"    Found {len(condition_roi_files)} ROI files in {condition_dir.name}")
+            
+            # Filter ROI files based on regions if specified
+            if args.regions:
+                filtered_roi_files = []
+                for roi_file in condition_roi_files:
+                    roi_name = roi_file.name
+                    for region in args.regions:
+                        if region in roi_name:
+                            filtered_roi_files.append(roi_file)
+                            break
+                condition_roi_files = filtered_roi_files
+                
+            # Filter ROI files based on timepoints if specified
+            if args.timepoints:
+                filtered_roi_files = []
+                for roi_file in condition_roi_files:
+                    roi_name = roi_file.name
+                    for timepoint in args.timepoints:
+                        if timepoint in roi_name:
+                            filtered_roi_files.append(roi_file)
+                            break
+                condition_roi_files = filtered_roi_files
+            
+            # Add the filtered ROI files to our list
+            roi_files.extend(condition_roi_files)
+    
+    # Filter by conditions if specified
+    if args.conditions:
+        filtered_roi_files = []
+        for roi_file in roi_files:
+            condition = roi_file.parent.name
+            if condition in args.conditions:
+                filtered_roi_files.append(roi_file)
+        roi_files = filtered_roi_files
+    
+    if not roi_files:
+        logger.error(f"No ROI files found in {roi_dir}")
+        return 1
+    
+    logger.info(f"Found {len(roi_files)} ROI files to process")
+    
+    # Process each ROI file
+    successful_extractions = 0
+    total_cells_extracted = 0
+    
+    for roi_file in roi_files:
+        logger.info(f"Processing ROI file: {roi_file}")
+        
+        # Find the corresponding image file
+        image_file = find_image_for_roi(roi_file, args.raw_data_dir)
+        
+        if image_file:
+            # Create output directory for this ROI
+            cell_output_dir = create_output_dir_for_roi(roi_file, args.output_dir)
+            
+            # Create and run the ImageJ macro
+            macro_file = create_imagej_macro(
+                roi_file,
+                image_file,
+                cell_output_dir,
+                headless=args.headless,
+                auto_close=args.auto_close
+            )
+            
+            success = run_imagej_macro(
+                args.imagej,
+                macro_file,
+                headless=args.headless
+            )
+            
+            # Check if cells were actually extracted
+            cell_files = list(cell_output_dir.glob("CELL*.tif"))
+            if cell_files:
+                logger.info(f"Successfully extracted {len(cell_files)} cells to {cell_output_dir}")
+                successful_extractions += 1
+                total_cells_extracted += len(cell_files)
+            else:
+                logger.warning(f"No cell files were created in {cell_output_dir}")
+        else:
+            logger.error(f"Could not find matching image file for {roi_file}")
+    
+    logger.info(f"Cell extraction completed. Successfully processed {successful_extractions} of {len(roi_files)} ROI files.")
+    logger.info(f"Total cells extracted: {total_cells_extracted}")
+    
+    return 0 if successful_extractions > 0 else 1
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -1,0 +1,35 @@
+{
+  "conditions": [
+    "Dish_1_Washout_+_DMSO",
+    "Dish_2_Washout_+_Drug"
+  ],
+  "regions": [
+    "R_1_Merged",
+    "R_2_Merged"
+  ],
+  "timepoints": [
+    "t00",
+    "t01",
+    "t02"
+  ],
+  "channels": [
+    "ch01"
+  ],
+  "imagej_path": "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
+  "use_pyimagej": false,
+  "roi_scale_factor": 4.0,
+  "min_particle_size": 0.1,
+  "continue_on_error": false,
+  "logging": {
+    "level": "INFO",
+    "console": true,
+    "file": true,
+    "file_path": "workflow.log"
+  },
+  "file_patterns": {
+    "roi_pattern": "{condition}_{region}_{timepoint}_rois.zip",
+    "image_pattern": "{condition}_{region}_{timepoint}_{channel}.tif",
+    "cell_pattern": "CELL{cell_number}.tif",
+    "mask_pattern": "MASK_CELL{cell_number}.tif"
+  }
+} 
