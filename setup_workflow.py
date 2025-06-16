@@ -114,9 +114,9 @@ class WorkflowSetup:
             try:
                 with open(workflow_config_path, 'r') as f:
                     workflow_config = json.load(f)
-                if 'steps' in workflow_config:
-                    config['steps'] = workflow_config['steps']
-                    logger.info("Added workflow steps from workflow_config.json")
+                # Copy the entire workflow config structure
+                config = workflow_config.copy()
+                logger.info("Using workflow steps from workflow_config.json")
             except Exception as e:
                 logger.error(f"Failed to load workflow steps: {e}")
         else:
@@ -127,9 +127,10 @@ class WorkflowSetup:
         detected_paths, validation_results = detect_and_validate_paths()
         
         # Update config with detected paths
-        config['software'].update(detected_paths)
-        config['detection']['last_detection_date'] = datetime.now().isoformat()
-        config['detection']['detection_cache'] = detected_paths
+        if 'imagej_path' in detected_paths:
+            config['imagej_path'] = detected_paths['imagej_path']
+        if 'cellpose_env' in detected_paths:
+            config['cellpose_env'] = detected_paths['cellpose_env']
         
         # Interactive setup for missing software
         missing_software = [sw for sw, valid in validation_results.items() if not valid]
@@ -142,9 +143,6 @@ class WorkflowSetup:
             
             for software in missing_software:
                 self._handle_missing_software(software, config, detected_paths[software])
-        
-        # Allow user to customize system settings
-        self._customize_system_settings(config)
         
         # Save configuration
         try:
@@ -245,23 +243,30 @@ class WorkflowSetup:
             logger.error(f"Failed to load configuration: {e}")
             return False
         
-        # Validate using our detector
-        validation_results = self.detector.validate_config_paths(config)
-        
+        # Check required paths
+        required_paths = ['imagej_path', 'cellpose_env']
         all_valid = True
-        for software, is_valid in validation_results.items():
-            status = "✓" if is_valid else "✗"
-            path = config.get('software', {}).get(software, 'Not configured')
-            logger.info(f"{status} {software}: {path}")
-            if not is_valid:
+        
+        for path_name in required_paths:
+            path_value = config.get(path_name)
+            if not path_value:
+                logger.info(f"✗ {path_name}: Not configured")
                 all_valid = False
+            elif path_name == 'imagej_path' and not self.detector._validate_imagej_path(path_value):
+                logger.info(f"✗ {path_name}: Invalid path")
+                all_valid = False
+            elif path_name == 'cellpose_env' and not self.detector._validate_cellpose_in_env(path_value):
+                logger.info(f"✗ {path_name}: Invalid path")
+                all_valid = False
+            else:
+                logger.info(f"✓ {path_name}: Valid")
         
-        if all_valid:
-            logger.info("✓ Configuration is valid")
-        else:
+        if not all_valid:
             logger.warning("✗ Configuration has issues")
+            return False
         
-        return all_valid
+        logger.info("✓ Configuration is valid")
+        return True
     
     def run_installation_check(self) -> bool:
         """

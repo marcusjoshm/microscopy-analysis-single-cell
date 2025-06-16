@@ -1,8 +1,12 @@
 #!/bin/bash
 # This script launches both Cellpose and ImageJ for interactive segmentation work
 
-# Path to Cellpose installation
-CELLPOSE_DIR="/Users/leelab/cellpose"
+# Get the script's directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Path to Cellpose virtual environment
+CELLPOSE_ENV="$WORKSPACE_DIR/cellpose_venv"
 # Path to FIJI/ImageJ executable
 IMAGEJ_PATH="/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx"
 # Preprocessed images directory
@@ -27,11 +31,11 @@ if [ $? -ne 0 ]; then
     handle_error "Failed to start ImageJ"
 fi
 
-# Change to the Cellpose directory
-cd "$CELLPOSE_DIR" || handle_error "Could not change to Cellpose directory"
+# Change to the workspace directory
+cd "$WORKSPACE_DIR" || handle_error "Could not change to workspace directory"
 
 # Activate the Cellpose virtual environment
-source venv/bin/activate || handle_error "Could not activate Cellpose environment"
+source "$CELLPOSE_ENV/bin/activate" || handle_error "Could not activate Cellpose environment"
 
 # Enhanced debugging for Cellpose environment
 DEBUG_LOG="${PREPROCESSED_DIR}/cellpose_debug.log"
