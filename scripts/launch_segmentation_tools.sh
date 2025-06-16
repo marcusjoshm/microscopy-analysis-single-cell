@@ -35,21 +35,42 @@ fi
 cd "$WORKSPACE_DIR" || handle_error "Could not change to workspace directory"
 
 # Activate the Cellpose virtual environment
-source "$CELLPOSE_ENV/bin/activate" || handle_error "Could not activate Cellpose environment"
+if [ ! -f "$CELLPOSE_ENV/bin/activate" ]; then
+    handle_error "Cellpose virtual environment not found at $CELLPOSE_ENV"
+fi
+
+# Source the activate script
+source "$CELLPOSE_ENV/bin/activate"
+
+# Verify we're using the correct Python interpreter
+PYTHON_PATH=$(which python)
+if [[ ! "$PYTHON_PATH" == *"cellpose_venv"* ]]; then
+    handle_error "Not using Python from Cellpose virtual environment. Current Python: $PYTHON_PATH"
+fi
 
 # Enhanced debugging for Cellpose environment
 DEBUG_LOG="${PREPROCESSED_DIR}/cellpose_debug.log"
 echo "===================== CELLPOSE DEBUG INFO =====================" > "$DEBUG_LOG"
 echo "Date: $(date)" >> "$DEBUG_LOG"
 echo "Working directory: $(pwd)" >> "$DEBUG_LOG"
-echo "Python executable: $(which python)" >> "$DEBUG_LOG"
+echo "Python executable: $PYTHON_PATH" >> "$DEBUG_LOG"
 echo "Python version: $(python --version 2>&1)" >> "$DEBUG_LOG"
-echo "Numpy version: $(python -c 'import numpy; print(numpy.__version__)')" >> "$DEBUG_LOG"
 
-# Check Cellpose version and configuration
+# Check if numpy is installed
+if ! python -c "import numpy" 2>/dev/null; then
+    echo "Installing numpy..."
+    pip install numpy
+fi
+
+# Check if cellpose is installed
+if ! python -c "import cellpose" 2>/dev/null; then
+    echo "Installing cellpose..."
+    pip install cellpose
+fi
+
+echo "Numpy version: $(python -c 'import numpy; print(numpy.__version__)')" >> "$DEBUG_LOG"
 echo "Cellpose version: $(python -c 'import cellpose; print(cellpose.__version__)')" >> "$DEBUG_LOG"
 echo "Cellpose installation: $(python -c 'import cellpose; print(cellpose.__file__)')" >> "$DEBUG_LOG"
-echo "Cellpose config: $(python -c 'import os, json; from pathlib import Path; config_path = Path.home().joinpath(".cellpose", "config.json"); print(json.dumps(json.load(open(config_path))) if os.path.exists(config_path) else "No config file found")')" >> "$DEBUG_LOG"
 
 # Log environment variables that might affect image processing
 echo "\nRelevant environment variables:" >> "$DEBUG_LOG"
@@ -64,8 +85,6 @@ echo "Debug info saved to $DEBUG_LOG"
 
 # Start Cellpose GUI in the background with debug logging
 echo "Starting Cellpose GUI..."
-# Using python -m cellpose invocation method to ensure consistent image loading
-# This matches how Cellpose is run directly by the user
 python -m cellpose 2>&1 | tee "${PREPROCESSED_DIR}/cellpose_output.log" &
 CELLPOSE_PID=$!
 

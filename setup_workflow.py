@@ -16,6 +16,8 @@ import sys
 import json
 import logging
 import argparse
+import subprocess
+import venv
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -45,7 +47,51 @@ class WorkflowSetup:
         self.config_template_path = self.workspace_dir / "config_new.template.json"
         self.config_path = self.workspace_dir / "config.json"
         self.detector = PathDetector()
+        self.cellpose_venv_path = self.workspace_dir / "cellpose_venv"
         
+    def create_virtual_environment(self) -> bool:
+        """
+        Create and configure the Cellpose virtual environment.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info("Setting up Cellpose virtual environment...")
+        
+        # Check if virtual environment already exists
+        if self.cellpose_venv_path.exists():
+            logger.info("Virtual environment already exists")
+            return True
+        
+        try:
+            # Create virtual environment
+            logger.info("Creating virtual environment...")
+            venv.create(self.cellpose_venv_path, with_pip=True)
+            
+            # Get path to Python interpreter in virtual environment
+            if sys.platform == "win32":
+                python_path = self.cellpose_venv_path / "Scripts" / "python.exe"
+            else:
+                python_path = self.cellpose_venv_path / "bin" / "python3"
+            
+            # Install required packages
+            logger.info("Installing required packages...")
+            subprocess.run(
+                [str(python_path), "-m", "pip", "install", "--upgrade", "pip"],
+                check=True
+            )
+            subprocess.run(
+                [str(python_path), "-m", "pip", "install", "numpy", "cellpose"],
+                check=True
+            )
+            
+            logger.info("Virtual environment setup complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to create virtual environment: {e}")
+            return False
+    
     def check_requirements(self) -> Dict[str, bool]:
         """
         Check if all required software is available.
@@ -67,6 +113,12 @@ class WorkflowSetup:
             requirements['python'] = False
         else:
             logger.info(f"✓ Python {sys.version}")
+        
+        # Create virtual environment if needed
+        if not self.cellpose_venv_path.exists():
+            if not self.create_virtual_environment():
+                logger.error("Failed to create Cellpose virtual environment")
+                return requirements
         
         # Detect and validate paths
         detected_paths, validation_results = detect_and_validate_paths()
@@ -122,6 +174,18 @@ class WorkflowSetup:
         else:
             logger.warning("workflow_config.json not found - workflow steps will not be included")
         
+        # Ensure virtual environment exists
+        if not self.cellpose_venv_path.exists():
+            if not self.create_virtual_environment():
+                logger.error("Failed to create Cellpose virtual environment")
+                return False
+        
+        # Get Python interpreter path from virtual environment
+        if sys.platform == "win32":
+            python_path = self.cellpose_venv_path / "Scripts" / "python.exe"
+        else:
+            python_path = self.cellpose_venv_path / "bin" / "python3"
+        
         # Detect software paths automatically
         logger.info("Detecting software installations...")
         detected_paths, validation_results = detect_and_validate_paths()
@@ -130,7 +194,7 @@ class WorkflowSetup:
         if 'imagej_path' in detected_paths:
             config['imagej_path'] = detected_paths['imagej_path']
         if 'cellpose_env' in detected_paths:
-            config['cellpose_env'] = detected_paths['cellpose_env']
+            config['cellpose_env'] = str(python_path)
         
         # Interactive setup for missing software
         missing_software = [sw for sw, valid in validation_results.items() if not valid]
@@ -164,8 +228,8 @@ class WorkflowSetup:
             print("Or ImageJ from: https://imagej.nih.gov/ij/download.html")
         elif software == 'cellpose_env':
             print("Cellpose is required for cell segmentation.")
-            print("Install with: pip install cellpose")
-            print("Or: conda install -c conda-forge cellpose")
+            print("A virtual environment will be created and configured automatically.")
+            return
         
         # Ask user if they want to provide a manual path
         manual_path = input(f"Enter path to {software} (or press Enter to skip): ").strip()
@@ -173,55 +237,12 @@ class WorkflowSetup:
         if manual_path:
             # Validate the manual path
             if software == 'imagej_path' and self.detector._validate_imagej_path(manual_path):
-                config['software'][software] = manual_path
-                logger.info(f"✓ Manually configured {software}: {manual_path}")
-            elif software == 'cellpose_env' and self.detector._validate_cellpose_in_env(manual_path):
-                config['software'][software] = manual_path
+                config['imagej_path'] = manual_path
                 logger.info(f"✓ Manually configured {software}: {manual_path}")
             else:
                 logger.warning(f"✗ Invalid path for {software}: {manual_path}")
         else:
             logger.warning(f"Skipping {software} - workflow may not function properly")
-    
-    def _customize_system_settings(self, config: Dict):
-        """Allow user to customize system settings."""
-        print("\n" + "="*60)
-        print("SYSTEM SETTINGS")
-        print("="*60)
-        print("Press Enter to keep default values.")
-        
-        system_settings = config.get('system', {})
-        
-        # Max workers
-        current_workers = system_settings.get('max_workers', 4)
-        workers_input = input(f"Max parallel workers [{current_workers}]: ").strip()
-        if workers_input.isdigit():
-            system_settings['max_workers'] = int(workers_input)
-        
-        # Log level
-        current_log_level = system_settings.get('log_level', 'INFO')
-        log_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR']
-        print(f"Available log levels: {', '.join(log_levels)}")
-        log_input = input(f"Log level [{current_log_level}]: ").strip().upper()
-        if log_input in log_levels:
-            system_settings['log_level'] = log_input
-        
-        # Workflow settings
-        workflow_settings = config.get('workflow_settings', {})
-        
-        # Default bins
-        current_bins = workflow_settings.get('default_bins', 5)
-        bins_input = input(f"Default number of bins for cell grouping [{current_bins}]: ").strip()
-        if bins_input.isdigit():
-            workflow_settings['default_bins'] = int(bins_input)
-        
-        # Auto-close ImageJ
-        current_auto_close = workflow_settings.get('auto_close_imagej', True)
-        auto_close_input = input(f"Auto-close ImageJ after processing [{'y' if current_auto_close else 'n'}]: ").strip().lower()
-        if auto_close_input in ['y', 'yes', 'true', '1']:
-            workflow_settings['auto_close_imagej'] = True
-        elif auto_close_input in ['n', 'no', 'false', '0']:
-            workflow_settings['auto_close_imagej'] = False
     
     def validate_configuration(self) -> bool:
         """
@@ -248,167 +269,53 @@ class WorkflowSetup:
         all_valid = True
         
         for path_name in required_paths:
-            path_value = config.get(path_name)
-            if not path_value:
-                logger.info(f"✗ {path_name}: Not configured")
+            path = config.get(path_name)
+            if not path:
+                logger.error(f"Missing required path: {path_name}")
                 all_valid = False
-            elif path_name == 'imagej_path' and not self.detector._validate_imagej_path(path_value):
-                logger.info(f"✗ {path_name}: Invalid path")
-                all_valid = False
-            elif path_name == 'cellpose_env' and not self.detector._validate_cellpose_in_env(path_value):
-                logger.info(f"✗ {path_name}: Invalid path")
-                all_valid = False
-            else:
-                logger.info(f"✓ {path_name}: Valid")
+                continue
+            
+            if path_name == 'imagej_path':
+                if not self.detector._validate_imagej_path(path):
+                    logger.error(f"Invalid ImageJ path: {path}")
+                    all_valid = False
+            elif path_name == 'cellpose_env':
+                if not self.detector._validate_cellpose_in_env(path):
+                    logger.error(f"Invalid Cellpose environment: {path}")
+                    all_valid = False
         
-        if not all_valid:
-            logger.warning("✗ Configuration has issues")
-            return False
-        
-        logger.info("✓ Configuration is valid")
-        return True
-    
-    def run_installation_check(self) -> bool:
-        """
-        Run a comprehensive installation check.
-        
-        Returns:
-            True if installation is ready, False otherwise
-        """
-        logger.info("Running installation check...")
-        
-        print("\n" + "="*60)
-        print("MICROSCOPY ANALYSIS WORKFLOW - INSTALLATION CHECK")
-        print("="*60)
-        
-        # Check requirements
-        requirements = self.check_requirements()
-        
-        print(f"\nSOFTWARE REQUIREMENTS:")
-        for software, available in requirements.items():
-            status = "✓" if available else "✗"
-            print(f"{status} {software.replace('_', ' ').title()}")
-        
-        # Check configuration
-        config_valid = False
-        if self.config_path.exists():
-            config_valid = self.validate_configuration()
-        else:
-            logger.warning("No configuration file found")
-        
-        print(f"\nCONFIGURATION:")
-        status = "✓" if config_valid else "✗"
-        print(f"{status} Configuration file")
-        
-        # Check workspace
-        workspace_items = ['scripts', 'macros', 'workflow_config.json']
-        workspace_valid = all((self.workspace_dir / item).exists() for item in workspace_items)
-        
-        print(f"\nWORKSPACE:")
-        status = "✓" if workspace_valid else "✗"
-        print(f"{status} Workflow files")
-        
-        # Overall status
-        all_ready = all(requirements.values()) and config_valid and workspace_valid
-        
-        print(f"\nOVERALL STATUS:")
-        if all_ready:
-            print("✓ Installation is ready! You can run the workflow.")
-        else:
-            print("✗ Installation needs attention. See issues above.")
-            print("\nTo fix issues:")
-            if not all(requirements.values()):
-                print("- Install missing software (see requirements above)")
-            if not config_valid:
-                print("- Run: python setup_workflow.py --create-config")
-            if not workspace_valid:
-                print("- Ensure you're in the correct workflow directory")
-        
-        return all_ready
-    
-    def create_example_workflow_config(self):
-        """Create an example workflow configuration."""
-        example_config = {
-            "name": "Microscopy Single-Cell Analysis Workflow",
-            "version": "2.0.0",
-            "description": "Complete workflow for analyzing microscopy data with different conditions and timepoints",
-            "steps": [
-                {
-                    "name": "prepare_input_structure",
-                    "type": "bash",
-                    "path": "scripts/prepare_input_structure.sh",
-                    "args": ["{input_dir}"],
-                    "description": "Standardize input directory structure for LASX-exported data"
-                },
-                # Add other steps as needed...
-            ]
-        }
-        
-        example_path = self.workspace_dir / "workflow_config_new_example.json"
-        
-        try:
-            with open(example_path, 'w') as f:
-                json.dump(example_config, f, indent=2)
-            logger.info(f"Created example workflow config: {example_path}")
-        except Exception as e:
-            logger.error(f"Failed to create example config: {e}")
-
+        return all_valid
 
 def main():
-    """Main setup function."""
-    parser = argparse.ArgumentParser(description='Setup the microscopy analysis workflow')
-    
-    parser.add_argument('--check', action='store_true',
-                        help='Run installation check only (checks requirements, config, and workspace)')
-    parser.add_argument('--create-config', action='store_true',
-                        help='Create configuration file')
-    parser.add_argument('--validate', action='store_true',
-                        help='Validate existing configuration file only')
-    parser.add_argument('--force', action='store_true',
-                        help='Force overwrite existing configuration')
-    parser.add_argument('--workspace', type=str,
-                        help='Workflow workspace directory (default: current directory)')
-    parser.add_argument('--verbose', action='store_true',
-                        help='Enable verbose logging')
-    
+    """Main entry point for the setup script."""
+    parser = argparse.ArgumentParser(description="Set up microscopy analysis workflow")
+    parser.add_argument("--create-config", action="store_true", help="Create configuration file")
+    parser.add_argument("--force", action="store_true", help="Force recreation of configuration file")
+    parser.add_argument("--workspace", type=str, help="Workspace directory path")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
     
-    # Set logging level
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    # Configure logging
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # Get workspace directory
+    workspace_dir = args.workspace or os.getcwd()
+    workspace_dir = os.path.abspath(workspace_dir)
     
     # Create setup instance
-    setup = WorkflowSetup(args.workspace)
+    setup = WorkflowSetup(workspace_dir)
     
-    success = True
-    
-    if args.check:
-        success = setup.run_installation_check()
-    elif args.create_config:
-        success = setup.create_configuration(force=args.force)
-        if success:
-            success = setup.validate_configuration()
-    elif args.validate:
-        success = setup.validate_configuration()
+    # Create configuration if requested
+    if args.create_config:
+        setup.create_configuration(force=args.force)
     else:
-        # Full setup process
-        print("Setting up microscopy analysis workflow...")
-        
-        # Run installation check first
-        if not setup.run_installation_check():
-            print("\nCreating configuration...")
-            success = setup.create_configuration(force=args.force)
-            if success:
-                print("\nRunning final check...")
-                success = setup.run_installation_check()
-    
-    if success:
-        print("\n✓ Setup completed successfully!")
-        return 0
-    else:
-        print("\n✗ Setup completed with issues. Please address the problems above.")
-        return 1
-
+        # Just check requirements
+        setup.check_requirements()
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    main() 

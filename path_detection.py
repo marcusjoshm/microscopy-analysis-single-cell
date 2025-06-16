@@ -159,11 +159,37 @@ class PathDetector:
         
         if os.path.exists(workspace_cellpose_venv):
             logger.info(f"Found cellpose_venv at: {workspace_cellpose_venv}")
+            # First check if cellpose is already installed
             if self._validate_cellpose_in_env(workspace_cellpose_venv):
-                logger.info(f"Validated Cellpose in workspace cellpose_venv: {workspace_cellpose_venv}")
+                logger.info(f"Cellpose already installed in virtual environment: {workspace_cellpose_venv}")
                 return workspace_cellpose_venv
-            else:
-                logger.warning(f"Found cellpose_venv but validation failed: {workspace_cellpose_venv}")
+            
+            # Only try to install if validation failed
+            logger.warning("Cellpose not found in virtual environment. Attempting installation...")
+            try:
+                # First upgrade pip
+                subprocess.run(
+                    [workspace_cellpose_venv, "-m", "pip", "install", "--upgrade", "pip"],
+                    check=True,
+                    capture_output=True,
+                    timeout=30
+                )
+                # Then install cellpose
+                subprocess.run(
+                    [workspace_cellpose_venv, "-m", "pip", "install", "cellpose"],
+                    check=True,
+                    capture_output=True,
+                    timeout=300  # 5 minute timeout for cellpose installation
+                )
+                if self._validate_cellpose_in_env(workspace_cellpose_venv):
+                    logger.info(f"Successfully installed and validated Cellpose in virtual environment: {workspace_cellpose_venv}")
+                    return workspace_cellpose_venv
+                else:
+                    logger.error("Cellpose installation completed but validation failed")
+            except subprocess.TimeoutExpired:
+                logger.error("Cellpose installation timed out")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to install Cellpose: {e.stderr.decode() if e.stderr else str(e)}")
         
         # Strategy 1: Check if cellpose is available in current Python environment
         try:
@@ -185,7 +211,9 @@ class PathDetector:
         try:
             result = subprocess.run(
                 ["which", "cellpose"], 
-                capture_output=True, text=True
+                capture_output=True, 
+                text=True,
+                timeout=5
             )
             if result.returncode == 0:
                 cellpose_path = result.stdout.strip()
@@ -194,7 +222,7 @@ class PathDetector:
                 if python_path and self._validate_cellpose_in_env(python_path):
                     logger.info(f"Found Cellpose command at: {cellpose_path} (Python: {python_path})")
                     return python_path
-        except subprocess.SubprocessError:
+        except (subprocess.SubprocessError, subprocess.TimeoutExpired):
             pass
         
         # Strategy 4: Check common pip installation locations and virtual environments
@@ -227,28 +255,9 @@ class PathDetector:
         ]
         
         for python_path in common_python_paths:
-            if self._validate_cellpose_in_env(python_path):
+            if os.path.exists(python_path) and self._validate_cellpose_in_env(python_path):
                 logger.info(f"Found Cellpose with Python at: {python_path}")
                 return python_path
-        
-        # Strategy 5: Try to find Python environments with cellpose installed
-        try:
-            # Use pip to find cellpose installations
-            result = subprocess.run(
-                ["pip", "list", "--format=json"],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0:
-                packages = json.loads(result.stdout)
-                for package in packages:
-                    if package["name"].lower() == "cellpose":
-                        # Found cellpose, get the Python path
-                        python_path = sys.executable
-                        if self._validate_cellpose_in_env(python_path):
-                            logger.info(f"Found Cellpose via pip at: {python_path}")
-                            return python_path
-        except (subprocess.SubprocessError, json.JSONDecodeError):
-            pass
         
         logger.warning("Cellpose not found automatically")
         return None
@@ -285,55 +294,66 @@ class PathDetector:
     
     def _validate_cellpose_in_env(self, python_path: str) -> bool:
         """
-        Validate that Cellpose is available in a Python environment.
+        Validate that a Python environment has Cellpose installed.
         
         Args:
-            python_path: Path to Python executable
+            python_path: Path to Python interpreter
             
         Returns:
-            True if Cellpose is available, False otherwise
+            True if valid, False otherwise
         """
-        import subprocess
-        import os
-        import logging
-        logger = logging.getLogger(__name__)
-
-        if not os.path.exists(python_path) or not os.access(python_path, os.X_OK):
-            logger.debug(f"Python path does not exist or is not executable: {python_path}")
+        if not os.path.exists(python_path):
+            logger.debug(f"Python path does not exist: {python_path}")
             return False
-
-        test_script = '''
-import sys
-try:
-    import cellpose
-    import torch
-    from cellpose import models
-    model = models.CellposeModel(gpu=False, model_type='cyto')
-    print("Successfully loaded Cellpose model")
-    sys.exit(0)
-except ImportError as e:
-    print(f"Import error: {e}", file=sys.stderr)
-    sys.exit(1)
-except Exception as e:
-    print(f"Error: {e}", file=sys.stderr)
-    sys.exit(1)
-'''
+            
+        if not os.access(python_path, os.X_OK):
+            logger.debug(f"Python path not executable: {python_path}")
+            return False
+        
+        # First check if we can run Python
         try:
             result = subprocess.run(
-                [python_path, "-c", test_script],
+                [python_path, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=5
             )
+            if result.returncode != 0:
+                logger.debug(f"Python validation failed: {result.stderr}")
+                return False
+                
+            # Try to run cellpose command
+            result = subprocess.run(
+                [python_path, "-m", "cellpose", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
             if result.returncode == 0:
-                logger.debug(f"Cellpose validation output: {result.stdout}")
+                # Even if there's a warning about NumPy, if we get here cellpose is installed
+                logger.info(f"Found Cellpose in {python_path}")
                 return True
             else:
                 logger.debug(f"Cellpose validation failed: {result.stderr}")
-                return False
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
-            logger.debug(f"Failed to validate Cellpose at {python_path}: {e}")
-            return False
+                # Try to get more information about the environment
+                try:
+                    pip_list = subprocess.run(
+                        [python_path, "-m", "pip", "list"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5
+                    )
+                    if pip_list.returncode == 0:
+                        logger.debug(f"Installed packages in {python_path}:\n{pip_list.stdout}")
+                except subprocess.SubprocessError:
+                    pass
+        except subprocess.TimeoutExpired:
+            logger.debug(f"Cellpose validation timed out in {python_path}")
+        except subprocess.SubprocessError as e:
+            logger.debug(f"Failed to validate Cellpose in {python_path}: {e}")
+        
+        return False
     
     def _get_python_from_cellpose_script(self, cellpose_path: str) -> Optional[str]:
         """Extract Python path from cellpose script shebang."""

@@ -1,8 +1,8 @@
 
 // Resize ROIs Macro for Single Cell Analysis Workflow
 // Input and output directories
-input_dir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/preprocessed";
-output_dir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/ROIs";
+input_dir = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3__/preprocessed";
+output_dir = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3__/ROIs";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
