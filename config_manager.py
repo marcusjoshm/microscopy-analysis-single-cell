@@ -40,7 +40,7 @@ class ConfigManager:
             # Always use new config format
             self.config_path = self.workspace_dir / "config_new.json"
         
-        self.config_template_path = self.workspace_dir / "config_new.template.json"
+        self.config_template_path = self.workspace_dir / "config.template.json"
         self.detector = PathDetector()
         self._config = None
         self._config_loaded = False

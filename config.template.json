@@ -1,32 +1,29 @@
 {
   "name": "Microscopy Single-Cell Analysis Workflow",
-  "version": "1.0.0",
-  "description": "Complete workflow for analyzing microscopy data with different conditions and timepoints",
-  "paths": {
-    "imagej_path": "/Applications/Fiji.app/Contents/MacOS/ImageJ-macosx",
-    "data_directory": "/path/to/your/data",
-    "output_directory": "/path/to/output"
+  "version": "2.0.0",
+  "description": "Automated configuration for single-cell microscopy analysis workflow",
+  "software": {
+    "imagej_path": null,
+    "cellpose_env": null,
+    "python_path": null
   },
   "system": {
     "max_workers": 4,
-    "temp_directory": "/tmp"
-  },
-  "logging": {
-    "level": "INFO",
-    "console": true,
-    "file": true,
-    "file_path": "workflow.log"
+    "temp_directory": "/tmp",
+    "log_level": "INFO",
+    "debug_mode": false
   },
   "workflow_settings": {
-    "use_pyimagej": false,
     "roi_scale_factor": 4.0,
     "min_particle_size": 0.1,
-    "continue_on_error": false
+    "default_bins": 5,
+    "continue_on_error": false,
+    "auto_close_imagej": true
   },
-  "file_patterns": {
-    "roi_pattern": "{condition}_{region}_{timepoint}_rois.zip",
-    "image_pattern": "{condition}_{region}_{timepoint}_{channel}.tif",
-    "cell_pattern": "CELL{cell_number}.tif",
-    "mask_pattern": "MASK_CELL{cell_number}.tif"
+  "detection": {
+    "auto_detect_paths": true,
+    "validate_paths": true,
+    "last_detection_date": null,
+    "detection_cache": {}
   }
-}
+} 

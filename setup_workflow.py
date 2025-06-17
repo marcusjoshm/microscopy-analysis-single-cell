@@ -44,7 +44,7 @@ class WorkflowSetup:
             workspace_dir: Directory where the workflow is located (default: current directory)
         """
         self.workspace_dir = Path(workspace_dir) if workspace_dir else Path.cwd()
-        self.config_template_path = self.workspace_dir / "config_new.template.json"
+        self.config_template_path = self.workspace_dir / "config.template.json"
         self.config_path = self.workspace_dir / "config.json"
         self.detector = PathDetector()
         self.cellpose_venv_path = self.workspace_dir / "cellpose_venv"
