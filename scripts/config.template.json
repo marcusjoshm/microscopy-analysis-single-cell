@@ -1,0 +1,29 @@
+{
+  "name": "Microscopy Single-Cell Analysis Workflow",
+  "version": "2.0.0",
+  "description": "Automated configuration for single-cell microscopy analysis workflow",
+  "software": {
+    "imagej_path": null,
+    "cellpose_env": null,
+    "python_path": null
+  },
+  "system": {
+    "max_workers": 4,
+    "temp_directory": "/tmp",
+    "log_level": "INFO",
+    "debug_mode": false
+  },
+  "workflow_settings": {
+    "roi_scale_factor": 4.0,
+    "min_particle_size": 0.1,
+    "default_bins": 5,
+    "continue_on_error": false,
+    "auto_close_imagej": true
+  },
+  "detection": {
+    "auto_detect_paths": true,
+    "validate_paths": true,
+    "last_detection_date": null,
+    "detection_cache": {}
+  }
+} 

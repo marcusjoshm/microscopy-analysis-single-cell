@@ -21,10 +21,10 @@ import venv
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
-from config_manager import ConfigManager
+from scripts.config_manager import ConfigManager
 
 # Import our path detection module
-from path_detection import PathDetector, detect_and_validate_paths
+from scripts.path_detection import PathDetector, detect_and_validate_paths
 
 # Set up logging
 logging.basicConfig(
