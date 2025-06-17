@@ -33,6 +33,12 @@ The installation script will:
 - Install all required dependencies in each environment
 - Verify the installations
 
+Make the script executable (required only once):
+```bash
+chmod +x install.sh
+```
+
+Then run the installation script:
 ```bash
 ./install.sh
 ```

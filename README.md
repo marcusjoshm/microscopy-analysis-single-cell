@@ -418,7 +418,7 @@ Once the ImageJ macros complete, ImageJ will launch again for guided thresholdin
 9. Choose the appropriate option:
    - If the image contains cells with equal expression levels and the Otsu auto thresholding accurately identifies desired structures, select **Continue with thresholding** and click **OK** (or simply press Enter)
    - If an image is difficult to threshold properly, select **Go back and add one more group** and click **OK**
-   - If there aren’t any features in the image to threshold (for example, an image where none of the cells have stress granules or P-bodies), select **Ignore thresholding for this group. There are no structures to threshold in the field** and click **OK**
+   - If there aren't any features in the image to threshold (for example, an image where none of the cells have stress granules or P-bodies), select **Ignore thresholding for this group. There are no structures to threshold in the field** and click **OK**
 
 10. If you selected "Go back and add one more group":
     - A window will appear with the message:
@@ -535,6 +535,14 @@ This project provides an end-to-end pipeline for analyzing single-cell microscop
 3. Install required packages:
    ```
    pip install numpy scipy pandas matplotlib scikit-image opencv-python tqdm scikit-learn read-roi
+   ```
+4. Make the installation script executable (required only once):
+   ```
+   chmod +x install.sh
+   ```
+5. Run the installation script:
+   ```
+   ./install.sh
    ```
 
 ### Cellpose Installation and Setup
