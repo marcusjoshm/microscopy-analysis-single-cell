@@ -5,6 +5,7 @@ ENV/
 .env/
 .venv/
 virtualenv/
+cellpose_venv/
 
 # Python cache files
 __pycache__/
@@ -46,3 +47,6 @@ log/
 # Uncomment if needed
 # output/
 # results/
+
+# Config files
+config.json
