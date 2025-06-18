@@ -400,58 +400,80 @@ def merge_metadata_with_analysis(group_metadata_df, analysis_file_path, output_p
         return False
 
 def main():
-    """Main function to include group metadata in analysis results."""
     parser = argparse.ArgumentParser(description='Include cell group metadata in analysis results')
-    
-    parser.add_argument('--grouped-cells-dir', '-g', required=True,
-                        help='Directory containing grouped cells data with metadata files')
-    parser.add_argument('--analysis-dir', '-a', required=True,
-                        help='Directory containing analysis results')
-    parser.add_argument('--output-dir', '-d',
-                        help='Base output directory for the workflow (helps with file naming)')
-    parser.add_argument('--output-file', '-o',
-                        help='Output file for merged results (default: analysis_dir/merged_group_analysis.csv)')
-    parser.add_argument('--overwrite', action='store_true',
-                        help='Overwrite the original analysis file with merged data')
-    parser.add_argument('--replace', action='store_true', default=True,
-                        help='Replace existing group data (default: True)')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                        help='Print verbose output')
+    parser.add_argument('--grouped-cells-dir', required=True, help='Directory containing grouped cell metadata')
+    parser.add_argument('--analysis-dir', required=True, help='Directory containing analysis results')
+    parser.add_argument('--output-dir', help='Directory to save updated analysis results')
+    parser.add_argument('--output-file', help='Specific output file name')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite existing output files')
+    parser.add_argument('--replace', action='store_true', help='Replace existing group columns')
+    parser.add_argument('--verbose', action='store_true', help='Print verbose diagnostic information')
+    parser.add_argument('--channels', nargs='+', help='Channels to process')
     
     args = parser.parse_args()
     
+    # Set up logging level
     if args.verbose:
         logger.setLevel(logging.DEBUG)
     
-    # Find group metadata files
+    # Find all group metadata files
     metadata_files = find_group_metadata_files(args.grouped_cells_dir)
+    
     if not metadata_files:
-        logger.error(f"No group metadata files found in {args.grouped_cells_dir}")
+        logger.error("No group metadata files found")
         return 1
     
-    # Find analysis file
+    # Process each metadata file
+    successful = 0
+    for metadata_file in metadata_files:
+        # Skip if channels are specified and this file doesn't match any of them
+        if args.channels:
+            file_channels = [ch for ch in args.channels if ch in str(metadata_file)]
+            if not file_channels:
+                logger.info(f"Skipping {metadata_file} - no matching channels")
+                continue
+            logger.info(f"Processing channels {file_channels} for {metadata_file}")
+        
+        logger.info(f"Processing metadata file: {metadata_file}")
+        
+        # Load metadata
+        try:
+            metadata_df = pd.read_csv(metadata_file)
+        except Exception as e:
+            logger.error(f"Failed to read metadata file {metadata_file}: {e}")
+            continue
+        
+        # Find matching analysis file
     analysis_file = find_analysis_file(args.analysis_dir, args.output_dir)
     if not analysis_file:
-        logger.error(f"No analysis results file found in {args.analysis_dir}")
-        return 1
-    
-    logger.info(f"Will process analysis file: {analysis_file}")
-    
-    # Set output file if not specified
-    if not args.output_file:
-        output_file = Path(args.analysis_dir) / "merged_group_analysis.csv"
+            logger.warning(f"No matching analysis file found for {metadata_file}")
+            continue
+        
+        # Determine output path
+        if args.output_file:
+            output_path = args.output_file
+        elif args.output_dir:
+            output_path = os.path.join(args.output_dir, os.path.basename(analysis_file))
     else:
-        output_file = Path(args.output_file)
+            output_path = analysis_file
+        
+        # Merge metadata with analysis results
+        if merge_metadata_with_analysis(
+            metadata_df,
+            analysis_file,
+            output_path,
+            overwrite=args.overwrite,
+            replace=args.replace
+        ):
+            successful += 1
     
-    # Load group metadata
-    group_metadata_df = load_group_metadata(metadata_files)
-    if group_metadata_df is None:
+    logger.info(f"Successfully processed {successful} out of {len(metadata_files)} metadata files")
+    
+    if successful == 0:
+        logger.error("No metadata files were successfully processed")
         return 1
     
-    # Merge metadata with analysis
-    success = merge_metadata_with_analysis(group_metadata_df, analysis_file, output_file, args.overwrite, args.replace)
-    
-    return 0 if success else 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

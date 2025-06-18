@@ -43,6 +43,23 @@ Then run the installation script:
 ./install.sh
 ```
 
+### 3. Configure the Workflow
+
+After installation, create and configure your workflow settings:
+
+```bash
+# Activate the main workflow environment
+source venv/bin/activate
+
+# Create configuration file with automatic software detection
+python setup_workflow.py --create-config --force
+```
+
+This will:
+- Automatically detect ImageJ/Fiji and Cellpose installations
+- Create a `config.json` file with the correct paths
+- Set up the workflow configuration for your system
+
 ## Manual Installation
 
 If you prefer to install manually or the script fails, follow these steps:
@@ -70,6 +87,23 @@ source cellpose_venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements_cellpose.txt
 ```
+
+### 3. Configure the Workflow
+
+After installation, create and configure your workflow settings:
+
+```bash
+# Activate the main workflow environment
+source venv/bin/activate
+
+# Create configuration file with automatic software detection
+python setup_workflow.py --create-config --force
+```
+
+This will:
+- Automatically detect ImageJ/Fiji and Cellpose installations
+- Create a `config.json` file with the correct paths
+- Set up the workflow configuration for your system
 
 ## Environment Structure
 

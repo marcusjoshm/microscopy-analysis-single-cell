@@ -20,6 +20,9 @@ import time
 import re
 import csv
 import pandas as pd
+import numpy as np
+import cv2
+import shutil
 
 # Set up logging
 logging.basicConfig(
@@ -393,6 +396,77 @@ def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path):
     
     return success
 
+def create_analysis_macro(input_dir, output_dir, imagej_path, auto_close=True):
+    """
+    Create ImageJ macro for analyzing cell masks.
+    
+    Args:
+        input_dir (str): Directory containing cell masks
+        output_dir (str): Directory to save analysis results
+        imagej_path (str): Path to ImageJ executable
+        auto_close (bool): Whether to close ImageJ after execution
+        
+    Returns:
+        str: Path to the created macro file
+    """
+    # Create temporary directory for macro
+    temp_dir = Path("macros")
+    temp_dir.mkdir(exist_ok=True)
+    
+    # Create macro file
+    macro_path = temp_dir / "temp_analyze_masks.ijm"
+    
+    # Convert paths to absolute paths
+    input_dir = str(Path(input_dir).absolute())
+    output_dir = str(Path(output_dir).absolute())
+    
+    # Create macro content
+    macro_content = f"""
+    // Analyze cell masks macro
+    input_dir = "{input_dir}";
+    output_dir = "{output_dir}";
+    
+    // Create output directory if it doesn't exist
+    File.makeDirectory(output_dir);
+    
+    // Get list of all mask files
+    file_list = getFileList(input_dir);
+    
+    // Process each file
+    for (i = 0; i < file_list.length; i++) {{
+        if (endsWith(file_list[i], "_mask.tif")) {{
+            // Open the mask
+            open(input_dir + File.separator + file_list[i]);
+            
+            // Get the mask name without extension
+            mask_name = File.nameWithoutExtension;
+            
+            // Set measurements
+            run("Set Measurements...", "area mean standard modal min centroid center perimeter bounding fit shape feret's integrated median skewness kurtosis area_fraction display redirect=None decimal=3");
+            
+            // Measure the mask
+            run("Measure");
+            
+            // Save measurements
+            saveAs("Results", output_dir + File.separator + mask_name + "_measurements.csv");
+            
+            // Close the mask
+            close();
+        }}
+    }}
+    
+    // Exit ImageJ if auto_close is enabled
+    if ({str(auto_close).lower()}) {{
+        exit();
+    }}
+    """
+    
+    # Write macro to file
+    with open(macro_path, 'w') as f:
+        f.write(macro_content)
+    
+    return str(macro_path)
+
 def main():
     """Main function to analyze cell masks."""
     parser = argparse.ArgumentParser(description='Analyze cell masks using ImageJ')
@@ -409,6 +483,7 @@ def main():
                         help='Specific timepoints to process (e.g., t00 t03)')
     parser.add_argument('--max-files', type=int, default=50,
                         help='Maximum number of files to process per directory')
+    parser.add_argument('--channels', nargs='+', help='Channels to process')
     
     args = parser.parse_args()
     

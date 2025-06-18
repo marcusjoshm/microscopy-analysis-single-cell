@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from path_detection import PathDetector
+from .path_detection import PathDetector
 
 logger = logging.getLogger(__name__)
 

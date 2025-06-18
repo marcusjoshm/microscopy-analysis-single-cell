@@ -23,13 +23,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GroupedThresholder")
 
-def create_macro_file(input_dir, output_dir, auto_close=False):
+def create_macro_file(input_dir, output_dir, channels=None, auto_close=False):
     """
     Create an ImageJ macro file for thresholding grouped cell images.
     
     Args:
         input_dir (str): Directory containing grouped cell images
         output_dir (str): Directory to save thresholded mask images
+        channels (list): List of channels to process (e.g., ['ch00', 'ch02'])
         auto_close (bool): Whether to add a line to close ImageJ when the macro completes
         
     Returns:
@@ -44,24 +45,40 @@ def create_macro_file(input_dir, output_dir, auto_close=False):
     # Define the flag file path that will be created if user requests more bins
     flag_file = Path(output_dir) / "NEED_MORE_BINS.flag"
     
-    # Generate the macro content without using % formatting for the entire string
-    # Instead, we'll do the replacements explicitly to avoid formatting issues
-    macro_content = """
+    # Create channel filter condition
+    channel_filter = ""
+    if channels:
+        channel_conditions = []
+        for channel in channels:
+            channel_conditions.append(f'indexOf(regionName, "{channel}") >= 0')
+        channel_filter = f"""
+        // Check if this region directory matches any of the specified channels
+        channelMatch = false;
+        if ({' || '.join(channel_conditions)}) {{
+            channelMatch = true;
+        }}
+        if (!channelMatch) {{
+            continue; // Skip this directory if it doesn't match specified channels
+        }}
+        """
+    
+    # Generate the macro content adapted for merged bin images
+    macro_content = f"""
 // Helper function to join array elements with a separator.
-function joinArray(arr, separator) {
+function joinArray(arr, separator) {{
     s = "";
-    for (i = 0; i < arr.length; i++) {
+    for (i = 0; i < arr.length; i++) {{
         s += arr[i];
         if (i < arr.length - 1)
             s += separator;
-    }
+    }}
     return s;
-}
+}}
 
 // ----- CONFIGURATION -----
-cellsDir = "__INPUT_DIR__/";
-outputDir = "__OUTPUT_DIR__/";
-flagFile = "__FLAG_FILE__";
+cellsDir = "{input_dir}/";
+outputDir = "{output_dir}/";
+flagFile = "{flag_file}";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -70,67 +87,69 @@ print("cellsDir: " + cellsDir);
 if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
 if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 
-// Get list of dish directories in cellsDir.
-dishDirs = getFileList(cellsDir);
-print("Found dish directories: " + joinArray(dishDirs, ", "));
+// Get list of condition directories in cellsDir.
+conditionDirs = getFileList(cellsDir);
+print("Found condition directories: " + joinArray(conditionDirs, ", "));
 
 // Skip initial image preview - proceed directly to thresholding
 // Start processing each image directly
 print("Proceeding directly to thresholding without preview.");
 
-// Process each image for thresholding
-for (d = 0; d < dishDirs.length; d++) {
-    dishName = dishDirs[d];
+// Process each condition directory
+for (d = 0; d < conditionDirs.length; d++) {{
+    conditionName = conditionDirs[d];
     
     // Skip non-directories and hidden files
-    if (endsWith(dishName, ".tif") || startsWith(dishName, ".")) {
+    if (!File.isDirectory(cellsDir + conditionName) || startsWith(conditionName, ".")) {{
         continue;
-    }
+    }}
     
-    dishPath = cellsDir + dishName;
+    conditionPath = cellsDir + conditionName;
     // Ensure trailing slash
-    if (!endsWith(dishPath, "/")) dishPath = dishPath + "/";
+    if (!endsWith(conditionPath, "/")) conditionPath = conditionPath + "/";
     
-    print("Processing dish: " + dishPath);
+    print("Processing condition: " + conditionPath);
     
-    // Get list of region/timepoint subdirectories within the dish folder
-    timeDirs = getFileList(dishPath);
-    if (timeDirs.length == 0) {
-        print("No subdirectories found in " + dishName);
+    // Get list of region/channel/timepoint subdirectories within the condition folder
+    regionDirs = getFileList(conditionPath);
+    if (regionDirs.length == 0) {{
+        print("No subdirectories found in " + conditionName);
         continue;
-    }
+    }}
     
-    print("Found time subdirectories in " + dishName + ": " + joinArray(timeDirs, ", "));
+    print("Found region subdirectories in " + conditionName + ": " + joinArray(regionDirs, ", "));
     
-    for (t = 0; t < timeDirs.length; t++) {
-        timeName = timeDirs[t];
+    for (t = 0; t < regionDirs.length; t++) {{
+        regionName = regionDirs[t];
         
         // Skip non-directories and hidden files
-        if (endsWith(timeName, ".tif") || startsWith(timeName, ".")) {
+        if (!File.isDirectory(conditionPath + regionName) || startsWith(regionName, ".")) {{
             continue;
-        }
+        }}
         
-        timePath = dishPath + timeName;
+        {channel_filter}
+        
+        regionPath = conditionPath + regionName;
         // Ensure trailing slash
-        if (!endsWith(timePath, "/")) timePath = timePath + "/";
+        if (!endsWith(regionPath, "/")) regionPath = regionPath + "/";
         
-        print("Processing time folder: " + timePath);
+        print("Processing region folder: " + regionPath);
         
-        // Get list of files in the time folder
-        files = getFileList(timePath);
-        if (files.length == 0) {
-            print("No files found in " + timeName);
+        // Get list of files in the region folder
+        files = getFileList(regionPath);
+        if (files.length == 0) {{
+            print("No files found in " + regionName);
             continue;
-        }
+        }}
         
-        print("Found files in " + timeName + ": " + joinArray(files, ", "));
+        print("Found files in " + regionName + ": " + joinArray(files, ", "));
         
-        for (f = 0; f < files.length; f++) {
+        for (f = 0; f < files.length; f++) {{
             fileName = files[f];
             
-            // Process only TIFF files
-            if (endsWith(fileName, ".tif")) {
-                imagePath = timePath + fileName;
+            // Process only bin TIFF files (skip CSV and txt files)
+            if (endsWith(fileName, ".tif") && indexOf(fileName, "_bin_") >= 0) {{
+                imagePath = regionPath + fileName;
                 print("Opening file: " + imagePath);
                 
                 // Open the image
@@ -149,16 +168,16 @@ for (d = 0; d < dishDirs.length; d++) {
                 waitForUser("Draw ROI for thresholding", "Please draw an oval ROI in a representative area for thresholding, then click OK.");
                 
                 // Check if user drew an ROI
-                if (selectionType() == -1) {
+                if (selectionType() == -1) {{
                     // No selection was made, prompt again
                     waitForUser("No ROI detected", "Please draw an oval ROI to select an area for thresholding, then click OK.");
                     
                     // If still no selection, use the entire image
-                    if (selectionType() == -1) {
+                    if (selectionType() == -1) {{
                         print("No ROI drawn, using the entire image for thresholding.");
                         run("Select All");
-                    }
-                }
+                    }}
+                }}
                 
                 // After ROI selection but before thresholding, ask if more bins are needed
                 Dialog.create("Evaluate Cell Grouping");
@@ -173,15 +192,15 @@ for (d = 0; d < dishDirs.length; d++) {
                 userBinsDecision = Dialog.getChoice();
                 
                 // If user wants more bins, create flag file and exit
-                if (userBinsDecision == "Go back and add one more group") {
+                if (userBinsDecision == "Go back and add one more group") {{
                     File.saveString("User requested more bins for better cell grouping", flagFile);
                     showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
                     run("Close All");
                     eval("script", "System.exit(0);");
-                }
+                }}
                 
                 // Handle case when there are no structures to threshold
-                if (userBinsDecision == "Ignore thresholding for this group. There are no structures to threshold in the field") {
+                if (userBinsDecision == "Ignore thresholding for this group. There are no structures to threshold in the field") {{
                     print("User indicated no structures to threshold - creating empty mask");
                     
                     // Create a completely black mask (all pixels = 0)
@@ -195,21 +214,21 @@ for (d = 0; d < dishDirs.length; d++) {
                     run("8-bit");
                     setMinAndMax(0, 0);
                     run("Apply LUT", "slice");
-                } else {
+                }} else {{
                     // Apply Otsu thresholding directly for normal case
                     setAutoThreshold("Otsu dark 16-bit");
                     
                     // Convert to mask
                     setOption("BlackBackground", true);
                     run("Convert to Mask");
-                }
+                }}
                 
                 // Create matching output directory structure
-                outFolder = outputDir + dishName + "/" + timeName + "/";
-                if (!File.exists(outFolder)) {
+                outFolder = outputDir + conditionName + "/" + regionName + "/";
+                if (!File.exists(outFolder)) {{
                     File.makeDirectory(outFolder);
                     print("Created output directory: " + outFolder);
-                }
+                }}
                 
                 // Save the processed image with "MASK_" prepended
                 outputPath = outFolder + "MASK_" + fileName;
@@ -218,18 +237,13 @@ for (d = 0; d < dishDirs.length; d++) {
                 
                 // Close the image
                 close();
-            }
-        }
-    }
-}
+            }}
+        }}
+    }}
+}}
 
 print("Thresholding of grouped cells completed.");
 """
-
-    # Replace placeholder values with actual values
-    macro_content = macro_content.replace("__INPUT_DIR__", input_dir)
-    macro_content = macro_content.replace("__OUTPUT_DIR__", output_dir)
-    macro_content = macro_content.replace("__FLAG_FILE__", str(flag_file))
     
     # Add auto-close line if requested
     if auto_close:
@@ -240,6 +254,11 @@ print("Thresholding of grouped cells completed.");
         f.write(macro_content)
     
     logger.info(f"Created macro file: {macro_file}")
+    if channels:
+        logger.info(f"Configured to process channels: {channels}")
+    else:
+        logger.info("Configured to process all channels")
+    
     return str(macro_file), str(flag_file)
 
 def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
@@ -309,14 +328,27 @@ def main():
                         help='Path to ImageJ executable')
     parser.add_argument('--auto-close', action='store_true',
                         help='Close ImageJ when the macro completes')
+    parser.add_argument('--channels', nargs='+', help='Channels to process (e.g., ch00 ch02)')
     
     args = parser.parse_args()
+    
+    # Parse channels argument
+    channels = None
+    if args.channels:
+        # Handle both space-separated and single string formats
+        if len(args.channels) == 1 and ' ' in args.channels[0]:
+            channels = args.channels[0].split()
+        else:
+            channels = args.channels
+        logger.info(f"Processing channels: {channels}")
+    else:
+        logger.info("No channels specified, processing all channels")
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Create the ImageJ macro
-    macro_file, flag_file = create_macro_file(args.input_dir, args.output_dir, args.auto_close)
+    macro_file, flag_file = create_macro_file(args.input_dir, args.output_dir, channels, args.auto_close)
     
     # Run the ImageJ macro
     success, needs_more_bins = run_imagej_macro(args.imagej, macro_file, flag_file, args.auto_close)

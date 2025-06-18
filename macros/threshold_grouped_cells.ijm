@@ -11,9 +11,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/grouped_cells/";
-outputDir = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/grouped_masks/";
-flagFile = "/Users/leelab/Documents/2025-05-16_analysis_Control_WT-VAPB_40minWash_/grouped_masks/NEED_MORE_BINS.flag";
+cellsDir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_masks/";
+flagFile = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_masks/NEED_MORE_BINS.flag";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -22,67 +22,78 @@ print("cellsDir: " + cellsDir);
 if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
 if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 
-// Get list of dish directories in cellsDir.
-dishDirs = getFileList(cellsDir);
-print("Found dish directories: " + joinArray(dishDirs, ", "));
+// Get list of condition directories in cellsDir.
+conditionDirs = getFileList(cellsDir);
+print("Found condition directories: " + joinArray(conditionDirs, ", "));
 
 // Skip initial image preview - proceed directly to thresholding
 // Start processing each image directly
 print("Proceeding directly to thresholding without preview.");
 
-// Process each image for thresholding
-for (d = 0; d < dishDirs.length; d++) {
-    dishName = dishDirs[d];
+// Process each condition directory
+for (d = 0; d < conditionDirs.length; d++) {
+    conditionName = conditionDirs[d];
     
     // Skip non-directories and hidden files
-    if (endsWith(dishName, ".tif") || startsWith(dishName, ".")) {
+    if (!File.isDirectory(cellsDir + conditionName) || startsWith(conditionName, ".")) {
         continue;
     }
     
-    dishPath = cellsDir + dishName;
+    conditionPath = cellsDir + conditionName;
     // Ensure trailing slash
-    if (!endsWith(dishPath, "/")) dishPath = dishPath + "/";
+    if (!endsWith(conditionPath, "/")) conditionPath = conditionPath + "/";
     
-    print("Processing dish: " + dishPath);
+    print("Processing condition: " + conditionPath);
     
-    // Get list of region/timepoint subdirectories within the dish folder
-    timeDirs = getFileList(dishPath);
-    if (timeDirs.length == 0) {
-        print("No subdirectories found in " + dishName);
+    // Get list of region/channel/timepoint subdirectories within the condition folder
+    regionDirs = getFileList(conditionPath);
+    if (regionDirs.length == 0) {
+        print("No subdirectories found in " + conditionName);
         continue;
     }
     
-    print("Found time subdirectories in " + dishName + ": " + joinArray(timeDirs, ", "));
+    print("Found region subdirectories in " + conditionName + ": " + joinArray(regionDirs, ", "));
     
-    for (t = 0; t < timeDirs.length; t++) {
-        timeName = timeDirs[t];
+    for (t = 0; t < regionDirs.length; t++) {
+        regionName = regionDirs[t];
         
         // Skip non-directories and hidden files
-        if (endsWith(timeName, ".tif") || startsWith(timeName, ".")) {
+        if (!File.isDirectory(conditionPath + regionName) || startsWith(regionName, ".")) {
             continue;
         }
         
-        timePath = dishPath + timeName;
+        
+        // Check if this region directory matches any of the specified channels
+        channelMatch = false;
+        if (indexOf(regionName, "ch00") >= 0 || indexOf(regionName, "ch02") >= 0) {
+            channelMatch = true;
+        }
+        if (!channelMatch) {
+            continue; // Skip this directory if it doesn't match specified channels
+        }
+        
+        
+        regionPath = conditionPath + regionName;
         // Ensure trailing slash
-        if (!endsWith(timePath, "/")) timePath = timePath + "/";
+        if (!endsWith(regionPath, "/")) regionPath = regionPath + "/";
         
-        print("Processing time folder: " + timePath);
+        print("Processing region folder: " + regionPath);
         
-        // Get list of files in the time folder
-        files = getFileList(timePath);
+        // Get list of files in the region folder
+        files = getFileList(regionPath);
         if (files.length == 0) {
-            print("No files found in " + timeName);
+            print("No files found in " + regionName);
             continue;
         }
         
-        print("Found files in " + timeName + ": " + joinArray(files, ", "));
+        print("Found files in " + regionName + ": " + joinArray(files, ", "));
         
         for (f = 0; f < files.length; f++) {
             fileName = files[f];
             
-            // Process only TIFF files
-            if (endsWith(fileName, ".tif")) {
-                imagePath = timePath + fileName;
+            // Process only bin TIFF files (skip CSV and txt files)
+            if (endsWith(fileName, ".tif") && indexOf(fileName, "_bin_") >= 0) {
+                imagePath = regionPath + fileName;
                 print("Opening file: " + imagePath);
                 
                 // Open the image
@@ -157,7 +168,7 @@ for (d = 0; d < dishDirs.length; d++) {
                 }
                 
                 // Create matching output directory structure
-                outFolder = outputDir + dishName + "/" + timeName + "/";
+                outFolder = outputDir + conditionName + "/" + regionName + "/";
                 if (!File.exists(outFolder)) {
                     File.makeDirectory(outFolder);
                     print("Created output directory: " + outFolder);

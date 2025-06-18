@@ -21,7 +21,6 @@ import venv
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
-from scripts.config_manager import ConfigManager
 
 # Import our path detection module
 from scripts.path_detection import PathDetector, detect_and_validate_paths
@@ -44,7 +43,7 @@ class WorkflowSetup:
             workspace_dir: Directory where the workflow is located (default: current directory)
         """
         self.workspace_dir = Path(workspace_dir) if workspace_dir else Path.cwd()
-        self.config_template_path = self.workspace_dir / "config.template.json"
+        self.config_template_path = self.workspace_dir / "scripts" / "config.template.json"
         self.config_path = self.workspace_dir / "config.json"
         self.detector = PathDetector()
         self.cellpose_venv_path = self.workspace_dir / "cellpose_venv"
@@ -127,7 +126,7 @@ class WorkflowSetup:
         requirements['cellpose'] = validation_results.get('cellpose_env', False)
         
         return requirements
-    
+
     def create_configuration(self, force: bool = False) -> bool:
         """
         Create the workflow configuration file.
@@ -160,20 +159,6 @@ class WorkflowSetup:
             logger.error(f"Failed to load template: {e}")
             return False
         
-        # Load workflow steps from workflow_config.json
-        workflow_config_path = self.workspace_dir / "workflow_config.json"
-        if workflow_config_path.exists():
-            try:
-                with open(workflow_config_path, 'r') as f:
-                    workflow_config = json.load(f)
-                # Copy the entire workflow config structure
-                config = workflow_config.copy()
-                logger.info("Using workflow steps from workflow_config.json")
-            except Exception as e:
-                logger.error(f"Failed to load workflow steps: {e}")
-        else:
-            logger.warning("workflow_config.json not found - workflow steps will not be included")
-        
         # Ensure virtual environment exists
         if not self.cellpose_venv_path.exists():
             if not self.create_virtual_environment():
@@ -191,7 +176,7 @@ class WorkflowSetup:
         detected_paths, validation_results = detect_and_validate_paths()
         
         # Update config with detected paths
-        if 'imagej_path' in detected_paths:
+        if 'imagej_path' in detected_paths and detected_paths['imagej_path']:
             config['imagej_path'] = detected_paths['imagej_path']
         if 'cellpose_env' in detected_paths:
             config['cellpose_env'] = str(python_path)
@@ -206,13 +191,28 @@ class WorkflowSetup:
             print("="*60)
             
             for software in missing_software:
-                self._handle_missing_software(software, config, detected_paths[software])
+                self._handle_missing_software(software, config, detected_paths.get(software))
         
         # Save configuration
         try:
             with open(self.config_path, 'w') as f:
                 json.dump(config, f, indent=2)
             logger.info(f"Configuration saved to {self.config_path}")
+            
+            # Print summary
+            print("\n" + "="*60)
+            print("CONFIGURATION SUMMARY")
+            print("="*60)
+            print(f"✓ Configuration saved to: {self.config_path}")
+            if config.get('imagej_path'):
+                print(f"✓ ImageJ/Fiji: {config['imagej_path']}")
+            if config.get('cellpose_env'):
+                print(f"✓ Cellpose environment: {config['cellpose_env']}")
+            
+            print(f"✓ Workflow steps: {len(config.get('steps', []))} steps loaded")
+            print("\nConfiguration complete! You can now run the workflow.")
+            print("Channel selection will be interactive during workflow execution.")
+            
             return True
         except Exception as e:
             logger.error(f"Failed to save configuration: {e}")
@@ -264,9 +264,10 @@ class WorkflowSetup:
             logger.error(f"Failed to load configuration: {e}")
             return False
         
-        # Check required paths
-        required_paths = ['imagej_path', 'cellpose_env']
         all_valid = True
+        
+        # Check required software paths
+        required_paths = ['imagej_path', 'cellpose_env']
         
         for path_name in required_paths:
             path = config.get(path_name)
@@ -279,43 +280,148 @@ class WorkflowSetup:
                 if not self.detector._validate_imagej_path(path):
                     logger.error(f"Invalid ImageJ path: {path}")
                     all_valid = False
+                else:
+                    logger.info(f"✓ Valid ImageJ path: {path}")
             elif path_name == 'cellpose_env':
                 if not self.detector._validate_cellpose_in_env(path):
                     logger.error(f"Invalid Cellpose environment: {path}")
                     all_valid = False
+                else:
+                    logger.info(f"✓ Valid Cellpose environment: {path}")
+        
+        # Check workflow steps
+        steps = config.get('steps', [])
+        if not steps:
+            logger.warning("No workflow steps found in configuration")
+        else:
+            logger.info(f"✓ Found {len(steps)} workflow steps")
         
         return all_valid
+    
+    def print_configuration_info(self) -> bool:
+        """
+        Print information about the current configuration.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info("Configuration information...")
+        
+        if not self.config_path.exists():
+            logger.error(f"Configuration file not found: {self.config_path}")
+            return False
+        
+        try:
+            with open(self.config_path, 'r') as f:
+                config = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load configuration: {e}")
+            return False
+        
+        print("\n" + "="*60)
+        print("CURRENT CONFIGURATION")
+        print("="*60)
+        print(f"Name: {config.get('name', 'Unknown')}")
+        print(f"Version: {config.get('version', 'Unknown')}")
+        print(f"Description: {config.get('description', 'No description')}")
+        
+        # Software paths
+        print(f"\nSoftware Paths:")
+        imagej_path = config.get('imagej_path')
+        if imagej_path:
+            status = "✓" if self.detector._validate_imagej_path(imagej_path) else "✗"
+            print(f"  ImageJ/Fiji: {status} {imagej_path}")
+        else:
+            print(f"  ImageJ/Fiji: ✗ Not configured")
+        
+        cellpose_env = config.get('cellpose_env')
+        if cellpose_env:
+            status = "✓" if self.detector._validate_cellpose_in_env(cellpose_env) else "✗"
+            print(f"  Cellpose: {status} {cellpose_env}")
+        else:
+            print(f"  Cellpose: ✗ Not configured")
+        
+        # Workflow steps
+        steps = config.get('steps', [])
+        print(f"\nWorkflow: {len(steps)} steps configured")
+        
+        if steps:
+            print("\nWorkflow Steps:")
+            for i, step in enumerate(steps, 1):
+                step_type = step.get('type', 'unknown')
+                step_name = step.get('name', 'unnamed')
+                print(f"  {i:2d}. {step_name} ({step_type})")
+        
+        return True
 
 def main():
     """Main entry point for the setup script."""
-    parser = argparse.ArgumentParser(description="Set up microscopy analysis workflow")
-    parser.add_argument("--create-config", action="store_true", help="Create configuration file")
-    parser.add_argument("--force", action="store_true", help="Force recreation of configuration file")
-    parser.add_argument("--workspace", type=str, help="Workspace directory path")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    args = parser.parse_args()
-    
-    # Configure logging
-    log_level = logging.DEBUG if args.verbose else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+    parser = argparse.ArgumentParser(
+        description="Setup and configure the microscopy analysis workflow"
     )
     
-    # Get workspace directory
-    workspace_dir = args.workspace or os.getcwd()
-    workspace_dir = os.path.abspath(workspace_dir)
+    parser.add_argument(
+        '--create-config', action='store_true',
+        help='Create a new configuration file'
+    )
+    parser.add_argument(
+        '--validate', action='store_true',
+        help='Validate the existing configuration'
+    )
+    parser.add_argument(
+        '--info', action='store_true',
+        help='Display information about the current configuration'
+    )
+    parser.add_argument(
+        '--force', action='store_true',
+        help='Force overwrite of existing configuration'
+    )
+    parser.add_argument(
+        '--workspace', type=str,
+        help='Specify workspace directory (default: current directory)'
+    )
+    
+    args = parser.parse_args()
     
     # Create setup instance
-    setup = WorkflowSetup(workspace_dir)
+    setup = WorkflowSetup(args.workspace)
     
-    # Create configuration if requested
+    # If no specific action is requested, show help and check requirements
+    if not any([args.create_config, args.validate, args.info]):
+        logger.info("Microscopy Analysis Workflow Setup")
+        logger.info("=" * 40)
+        
+        # Check requirements
+        requirements = setup.check_requirements()
+        
+        # Print requirements status
+        print("\nRequirements Check:")
+        for req, status in requirements.items():
+            status_str = "✓" if status else "✗"
+            print(f"  {req}: {status_str}")
+        
+        if all(requirements.values()):
+            print("\n✓ All requirements satisfied!")
+            print("Run with --create-config to create a configuration file.")
+        else:
+            print("\n✗ Some requirements are missing.")
+            print("Run with --create-config to set up the workflow.")
+        
+        return 0
+    
+    # Handle specific actions
+    success = True
+    
     if args.create_config:
-        setup.create_configuration(force=args.force)
-    else:
-        # Just check requirements
-        setup.check_requirements()
+        success = setup.create_configuration(force=args.force)
+    
+    if args.validate:
+        success = setup.validate_configuration() and success
+    
+    if args.info:
+        success = setup.print_configuration_info() and success
+    
+    return 0 if success else 1
 
 if __name__ == "__main__":
-    main() 
+    sys.exit(main()) 

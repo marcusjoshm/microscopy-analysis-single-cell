@@ -135,13 +135,14 @@ def read_image_with_metadata(image_path):
         logger.warning(f"OpenCV error reading {image_path}: {e}")
         return None, None
 
-def combine_masks(mask_dir, output_dir):
+def combine_masks(mask_dir, output_dir, channels=None):
     """
     Combine masks for each group in the mask directory.
     
     Args:
         mask_dir (Path): Directory containing mask files
         output_dir (Path): Directory to save combined masks
+        channels (list): List of channels to process
         
     Returns:
         bool: True if successful, False otherwise
@@ -313,6 +314,7 @@ def main():
                         help='Input directory containing mask files (grouped_masks directory)')
     parser.add_argument('--output-dir', required=True,
                         help='Output directory for combined masks (combined_masks directory)')
+    parser.add_argument('--channels', nargs='+', help='Channels to process')
     
     args = parser.parse_args()
     

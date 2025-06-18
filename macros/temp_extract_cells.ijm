@@ -2,9 +2,9 @@
 // Extracts individual cells from an image file using ROIs
 
 // Input parameters
-roiFile = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3___/ROIs/U2OS_vs_A549_SG_Biogenesis_Rep_4/ROIs_U2OS_ULKi_Merged_Processed001_ch00_t00_rois.zip";
-imageFile = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3___/raw_data/U2OS_vs_A549_SG_Biogenesis_Rep_4/timepoint_1/U2OS_ULKi_Merged_Processed001_ch00_t00.tif";
-outputDir = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3___/cells/U2OS_vs_A549_SG_Biogenesis_Rep_4/U2OS_ULKi_Merged_Processed001_t00";
+roiFile = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/ROIs/U2OS vs A549 SG Disassembly Rep 4/ROIs_A549 Control_Merged_Processed001_ch02_t00_rois.zip";
+imageFile = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/raw_data/U2OS vs A549 SG Disassembly Rep 4/timepoint_1/A549 Control_Merged_Processed001_ch02_t00.tif";
+outputDir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/cells/U2OS vs A549 SG Disassembly Rep 4/A549 Control_Merged_Processed001_ch02_t00";
 
 // Print parameters for debugging
 print("ROI file: " + roiFile);

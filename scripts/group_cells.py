@@ -726,59 +726,155 @@ def group_and_sum_cells(cell_dir, output_dir, num_bins, method='gmm', force_clus
     
     return True
 
-def main():
-    """Main function to group cells by expression level."""
-    parser = argparse.ArgumentParser(description='Group cells by expression level using GMM clustering')
+def process_cell_directory(cell_dir, output_dir, bins=5, force_clusters=False, channels=None):
+    """
+    Process a directory of cell images and group them based on intensity.
     
-    parser.add_argument('--cells-dir', '-c', required=True,
-                        help='Directory containing cell images (output from extract_cells.py)')
-    parser.add_argument('--output-dir', '-o', required=True,
-                        help='Directory to save grouped cell images')
-    parser.add_argument('--bins', '-b', type=int, default=5,
-                        help='Number of groups to cluster cells into (default: 5)')
-    parser.add_argument('--clustering-method', '-m', choices=['gmm', 'kmeans'], default='kmeans',
-                        help='Method to use for clustering (default: kmeans)')
-    parser.add_argument('--force-clusters', '-f', action='store_true',
-                        help='Force creation of exactly --bins clusters, even with similar data')
-    parser.add_argument('--verbose', '-v', action='store_true',
-                        help='Print verbose diagnostic information')
-    parser.add_argument('--preserve-scale', action='store_true',
-                        help='Ensure scale information is preserved in output TIFFs (requires tifffile)')
+    Args:
+        cell_dir (Path): Directory containing cell images
+        output_dir (Path): Directory to save grouped images
+        bins (int): Number of intensity bins
+        force_clusters (bool): Force clustering even if few cells
+        channels (list): List of channels to process (not used here, handled in main)
+    """
+    # Create output directory
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get list of cell images
+    cell_files = list(cell_dir.glob("CELL*.tif"))
+    if not cell_files:
+        logger.warning(f"No cell images found in {cell_dir}")
+        return False
+    
+    logger.info(f"Processing {len(cell_files)} cells in {cell_dir}")
+    
+    # Calculate average intensity for each cell
+    logger.info(f"Calculating intensities for {len(cell_files)} cells...")
+    intensities = []
+    processed_count = 0
+    
+    for cell_file in cell_files:
+        try:
+            img = cv2.imread(str(cell_file), cv2.IMREAD_GRAYSCALE)
+            if img is None:
+                logger.warning(f"Could not read image: {cell_file}")
+                continue
+            avg_intensity = np.mean(img)
+            intensities.append((cell_file, avg_intensity))
+            processed_count += 1
+            
+            # Log progress every 20 cells
+            if processed_count % 20 == 0:
+                logger.info(f"Processed {processed_count}/{len(cell_files)} cells...")
+                
+        except Exception as e:
+            logger.error(f"Error processing {cell_file}: {e}")
+            continue
+    
+    logger.info(f"Completed intensity calculation for {processed_count} cells")
+    
+    if not intensities:
+        logger.error(f"No valid cell images found in {cell_dir}")
+        return False
+    
+    # Sort cells by intensity
+    logger.info(f"Sorting {len(intensities)} cells by intensity...")
+    intensities.sort(key=lambda x: x[1])
+    
+    # Group cells into bins
+    n_cells = len(intensities)
+    if n_cells < bins and not force_clusters:
+        logger.warning(f"Not enough cells ({n_cells}) for {bins} bins. Skipping clustering.")
+        return False
+    
+    cells_per_bin = n_cells // bins
+    remainder = n_cells % bins
+    
+    logger.info(f"Creating {bins} groups with approximately {cells_per_bin} cells each...")
+    
+    # Create groups
+    groups = []
+    start_idx = 0
+    for i in range(bins):
+        # Add one extra cell to early bins if there's a remainder
+        bin_size = cells_per_bin + (1 if i < remainder else 0)
+        end_idx = start_idx + bin_size
+        groups.append(intensities[start_idx:end_idx])
+        start_idx = end_idx
+        logger.info(f"Group {i+1}: {len(groups[i])} cells")
+    
+    # Save grouped cells
+    logger.info(f"Copying cells to group directories...")
+    total_copied = 0
+    for i, group in enumerate(groups):
+        group_dir = output_dir / f"group_{i+1}"
+        group_dir.mkdir(exist_ok=True)
+        
+        group_copied = 0
+        for cell_file, _ in group:
+            try:
+                shutil.copy2(cell_file, group_dir / cell_file.name)
+                group_copied += 1
+                total_copied += 1
+            except Exception as e:
+                logger.error(f"Error copying {cell_file} to {group_dir}: {e}")
+                continue
+        
+        logger.info(f"Copied {group_copied} cells to group_{i+1}")
+    
+    logger.info(f"Successfully grouped {n_cells} cells into {bins} groups in {output_dir}")
+    logger.info(f"Total files copied: {total_copied}")
+    return True
+
+def main():
+    parser = argparse.ArgumentParser(description='Group cells based on intensity')
+    parser.add_argument('--cells-dir', required=True, help='Directory containing cell images')
+    parser.add_argument('--output-dir', required=True, help='Directory to save grouped cells')
+    parser.add_argument('--bins', type=int, default=5, help='Number of intensity bins')
+    parser.add_argument('--force-clusters', action='store_true', help='Force clustering even if few cells')
+    parser.add_argument('--channels', required=True, help='Channels to process (space-separated)')
     
     args = parser.parse_args()
     
-    # Check for tifffile if preserve-scale is requested
-    if args.preserve_scale and not HAVE_TIFFFILE:
-        logger.warning("tifffile library not available but --preserve-scale was requested.")
-        logger.warning("Scale information may not be preserved. Install with: pip install tifffile")
+    # Handle channels as either a single string or multiple arguments
+    if isinstance(args.channels, list):
+        channels = args.channels
+    else:
+        # Split the string on spaces to get individual channels
+        channels = args.channels.split()
     
+    # Convert paths to Path objects
     cells_dir = Path(args.cells_dir)
     output_dir = Path(args.output_dir)
     
     # Create output directory if it doesn't exist
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Find all directories containing cell images
-    cell_dirs = find_cell_directories(cells_dir)
+    # Find all cell directories (directories that contain CELL*.tif files)
+    cell_dirs = []
+    for item in cells_dir.rglob("*"):
+        if item.is_dir() and list(item.glob("CELL*.tif")):
+            cell_dirs.append(item)
     
     if not cell_dirs:
         logger.error(f"No cell directories found in {cells_dir}")
         return 1
     
     logger.info(f"Found {len(cell_dirs)} cell directories to process")
+    successful = 0
     
     # Process each cell directory
-    successful = 0
-    for condition_name, cell_dir in cell_dirs:
-        logger.info(f"Processing {condition_name} - {cell_dir.name}")
-        if group_and_sum_cells(
-            cell_dir, 
-            output_dir, 
-            args.bins, 
-            method=args.clustering_method,
-            force_clusters=args.force_clusters,
-            verbose=args.verbose
-        ):
+    for cell_dir in cell_dirs:
+        # Check if directory matches any of the specified channels
+        if channels:
+            dir_channels = [ch for ch in channels if ch in str(cell_dir)]
+            if not dir_channels:
+                logger.info(f"Skipping {cell_dir} - no matching channels")
+                continue
+            logger.info(f"Processing channels {dir_channels} for {cell_dir}")
+        
+        # Use group_and_sum_cells to create merged bin images instead of individual cell files
+        if group_and_sum_cells(cell_dir, output_dir, args.bins, method='gmm', force_clusters=args.force_clusters, verbose=False):
             successful += 1
     
     logger.info(f"Successfully processed {successful} out of {len(cell_dirs)} cell directories")
@@ -789,5 +885,5 @@ def main():
     
     return 0
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

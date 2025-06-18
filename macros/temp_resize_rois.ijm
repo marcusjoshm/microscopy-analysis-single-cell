@@ -1,11 +1,13 @@
 
 // Resize ROIs Macro for Single Cell Analysis Workflow
 // Input and output directories
-input_dir = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3___/preprocessed";
-output_dir = "/Volumes/NX-01-A/2025-06-06_analysis_Dish_1_Cond_3___/ROIs";
+input_dir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/preprocessed";
+output_dir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/ROIs";
+channel = "ch00";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
+print("Processing channel: " + channel);
 
 // Process all condition directories in input directory
 condition_dirs = getFileList(input_dir);
@@ -47,8 +49,8 @@ for (c = 0; c < condition_dirs.length; c++) {
         for (i = 0; i < subdir_files.length; i++) {
             roi_file = subdir_files[i];
             
-            // Process only files ending with _rois.zip
-            if (!endsWith(roi_file, "_rois.zip")) {
+            // Process only files ending with _rois.zip and containing the specified channel
+            if (!endsWith(roi_file, "_rois.zip") || indexOf(roi_file, channel) == -1) {
                 continue;
             }
 

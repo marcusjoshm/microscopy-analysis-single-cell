@@ -24,13 +24,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ROIResizer")
 
-def create_macro_file(input_dir, output_dir, auto_close=False):
+def create_macro_file(input_dir, output_dir, channel, auto_close=False):
     """
     Create an ImageJ macro file for ROI resizing.
     
     Args:
         input_dir (str): Input directory containing binned images and ROIs
         output_dir (str): Output directory for resized ROIs
+        channel (str): Segmentation channel to process (e.g., ch00)
         auto_close (bool): Whether to add a line to close ImageJ when the macro completes
         
     Returns:
@@ -48,9 +49,11 @@ def create_macro_file(input_dir, output_dir, auto_close=False):
 // Input and output directories
 input_dir = "{input_dir}";
 output_dir = "{output_dir}";
+channel = "{channel}";
 
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
+print("Processing channel: " + channel);
 
 // Process all condition directories in input directory
 condition_dirs = getFileList(input_dir);
@@ -92,8 +95,8 @@ for (c = 0; c < condition_dirs.length; c++) {{
         for (i = 0; i < subdir_files.length; i++) {{
             roi_file = subdir_files[i];
             
-            // Process only files ending with _rois.zip
-            if (!endsWith(roi_file, "_rois.zip")) {{
+            // Process only files ending with _rois.zip and containing the specified channel
+            if (!endsWith(roi_file, "_rois.zip") || indexOf(roi_file, channel) == -1) {{
                 continue;
             }}
 
@@ -262,6 +265,8 @@ def main():
                         help='Output directory for resized ROIs')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--channel', required=True,
+                        help='Segmentation channel to process ROIs for (e.g., ch00)')
     parser.add_argument('--auto-close', action='store_true',
                         help='Close ImageJ when the macro completes')
     
@@ -271,7 +276,7 @@ def main():
     os.makedirs(args.output, exist_ok=True)
     
     # Create the ImageJ macro
-    macro_file = create_macro_file(args.input, args.output, args.auto_close)
+    macro_file = create_macro_file(args.input, args.output, args.channel, args.auto_close)
     
     # Run the ImageJ macro
     success = run_imagej_macro(args.imagej, macro_file, args.auto_close)

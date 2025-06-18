@@ -353,8 +353,8 @@ def create_output_dir_for_roi(roi_file, output_base_dir):
     region = region.rstrip("_")
     
     # Create the output directory structure
-    # Format: output_base_dir/condition/region_timepoint
-    output_dir = Path(output_base_dir) / condition / f"{region}_{timepoint}"
+    # Format: output_base_dir/condition/region_channel_timepoint
+    output_dir = Path(output_base_dir) / condition / f"{region}_{channel}_{timepoint}"
     os.makedirs(output_dir, exist_ok=True)
     
     logger.info(f"Created output directory: {output_dir}")
@@ -384,6 +384,7 @@ def main():
                         help='Enable more verbose logging')
     parser.add_argument('--headless', action='store_true',
                         help='Run ImageJ in headless mode')
+    parser.add_argument('--channels', nargs='+', help='Channels to process')
     
     args = parser.parse_args()
     
@@ -458,6 +459,14 @@ def main():
     total_cells_extracted = 0
     
     for roi_file in roi_files:
+        # Skip if channels are specified and this file doesn't match any of them
+        if args.channels:
+            file_channels = [ch for ch in args.channels if ch in str(roi_file)]
+            if not file_channels:
+                logger.info(f"Skipping {roi_file} - no matching channels")
+                continue
+            logger.info(f"Processing channels {file_channels} for {roi_file}")
+        
         logger.info(f"Processing ROI file: {roi_file}")
         
         # Find the corresponding image file

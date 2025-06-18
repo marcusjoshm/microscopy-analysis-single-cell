@@ -32,7 +32,8 @@ class WorkflowOrchestrator:
     def __init__(self, config_path, input_dir, output_dir, skip_steps=None, 
                  datatype: Optional[str] = None, 
                  conditions: Optional[List[str]] = None, 
-                 channels: Optional[List[str]] = None, 
+                 segmentation_channel: Optional[str] = None,
+                 analysis_channels: Optional[List[str]] = None,
                  timepoints=None, regions=None, setup_only=False,
                  start_from: Optional[str] = None, bins: int = 5):
         """
@@ -45,7 +46,8 @@ class WorkflowOrchestrator:
             skip_steps (list): List of step names to skip (optional).
             datatype (str): Specific data type to analyze (optional).
             conditions (list): List of specific conditions to analyze (optional).
-            channels (list): List of specific channels to analyze (optional).
+            segmentation_channel (str): Channel to use for cell segmentation (optional).
+            analysis_channels (list): List of channels to analyze (optional).
             timepoints (list): List of timepoints to analyze (e.g., ["t00", "t03"]).
             regions (list): List of regions to analyze (e.g., ["R_1", "R_2", "R_3"]).
             setup_only (bool): Flag to indicate if only directory setup should be performed.
@@ -58,7 +60,8 @@ class WorkflowOrchestrator:
         self.skip_steps = skip_steps or []
         self.selected_datatype = datatype
         self.selected_conditions = conditions or []
-        self.selected_channels = channels if channels is not None else []
+        self.segmentation_channel = segmentation_channel
+        self.analysis_channels = analysis_channels or []
         self.timepoints = timepoints or []
         self.regions = regions or []
         self.setup_only = setup_only
@@ -68,6 +71,8 @@ class WorkflowOrchestrator:
         # --- BEGIN DEBUG LOG ---
         logger.debug(f"__init__: self.selected_conditions = {self.selected_conditions}")
         logger.debug(f"__init__: self.regions = {self.regions}")
+        logger.debug(f"__init__: self.segmentation_channel = {self.segmentation_channel}")
+        logger.debug(f"__init__: self.analysis_channels = {self.analysis_channels}")
         # --- END DEBUG LOG ---
         
         # Load configuration
@@ -89,7 +94,8 @@ class WorkflowOrchestrator:
             'experiment_metadata': self.experiment_metadata,
             'selected_datatype': self.selected_datatype,
             'selected_conditions': self.selected_conditions,
-            'selected_channels': self.selected_channels,
+            'segmentation_channel': self.segmentation_channel,
+            'analysis_channels': self.analysis_channels,
             'selected_timepoints': self.timepoints,
             'selected_regions': self.regions,
             'bins': self.bins
@@ -340,7 +346,7 @@ class WorkflowOrchestrator:
             conditions_to_process = self.selected_conditions or self.experiment_metadata.get('conditions', [])
             regions_to_process = self.regions or self.experiment_metadata.get('regions', [])
             timepoints_to_process = self.timepoints or self.experiment_metadata.get('timepoints', [])
-            channels_to_process = self.selected_channels or self.experiment_metadata.get('channels', [])
+            channels_to_process = self.analysis_channels or self.experiment_metadata.get('channels', [])
 
             logger.info(f"Creating directories for Conditions: {conditions_to_process}")
             logger.info(f"Creating directories for Regions: {regions_to_process}")
@@ -446,7 +452,19 @@ class WorkflowOrchestrator:
         """
         cmd = ['/bin/bash', script_path]
         if args:
-            cmd.extend(args)
+            # Substitute placeholders in arguments
+            substituted_args = []
+            for arg in args:
+                arg = arg.replace('{input_dir}', str(self.input_dir)) \
+                         .replace('{output_dir}', str(self.output_dir)) \
+                         .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
+                         .replace('{conditions}', ' '.join(self.selected_conditions)) \
+                         .replace('{regions}', ' '.join(self.regions)) \
+                         .replace('{timepoints}', ' '.join(self.timepoints)) \
+                         .replace('{segmentation_channel}', self.segmentation_channel or '') \
+                         .replace('{analysis_channels}', ' '.join(self.analysis_channels))
+                substituted_args.append(arg)
+            cmd.extend(substituted_args)
             
         logger.info(f"Running bash script: {script_path}")
         try:
@@ -476,9 +494,23 @@ class WorkflowOrchestrator:
             where result_data may contain additional information like 'needs_more_bins'
         """
         args = args or []
-        command = [sys.executable, script_path] + args
+        command = [sys.executable, script_path]
         
-        logger.info(f"Running Python script: {script_path} with args: {args}") # Log arguments for clarity
+        # Substitute placeholders in arguments
+        substituted_args = []
+        for arg in args:
+            arg = arg.replace('{input_dir}', str(self.input_dir)) \
+                     .replace('{output_dir}', str(self.output_dir)) \
+                     .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
+                     .replace('{conditions}', ' '.join(self.selected_conditions)) \
+                     .replace('{regions}', ' '.join(self.regions)) \
+                     .replace('{timepoints}', ' '.join(self.timepoints)) \
+                     .replace('{segmentation_channel}', self.segmentation_channel or '') \
+                     .replace('{analysis_channels}', ' '.join(self.analysis_channels))
+            substituted_args.append(arg)
+        command.extend(substituted_args)
+        
+        logger.info(f"Running Python script: {script_path} with args: {substituted_args}") # Log arguments for clarity
         
         try:
             # Run without capturing stdout/stderr
@@ -642,13 +674,13 @@ class WorkflowOrchestrator:
         elif step_name == "select_condition" and not self.selected_conditions:
             available_items = self.experiment_metadata['conditions']
             item_type = "conditions"
-            self._handle_list_selection(available_items, item_type, self.selected_conditions)
+            self.selected_conditions = self._handle_list_selection(available_items, item_type, self.selected_conditions)
             self.workflow_state['selected_conditions'] = self.selected_conditions
             
         elif step_name == "select_timepoints" and not self.timepoints:
             available_items = self.experiment_metadata['timepoints']
             item_type = "timepoints"
-            self._handle_list_selection(available_items, item_type, self.timepoints)
+            self.timepoints = self._handle_list_selection(available_items, item_type, self.timepoints)
             self.workflow_state['selected_timepoints'] = self.timepoints
             
         elif step_name == "select_regions" and not self.regions:
@@ -721,37 +753,22 @@ class WorkflowOrchestrator:
                 sys.exit(1)
                 
             item_type = "regions"
-            self._handle_list_selection(available_items, item_type, self.regions)
+            self.regions = self._handle_list_selection(available_items, item_type, self.regions)
             self.workflow_state['selected_regions'] = self.regions
             
-        elif step_name == "select_channels" and not self.selected_channels:
-            # Filter channels based on selected regions
-            available_channels = set()
+        elif step_name == "select_segmentation_channel" and not self.segmentation_channel:
+            available_items = self.experiment_metadata['channels']
+            item_type = "segmentation channel"
+            selected_channels = self._handle_list_selection(available_items, item_type, [])
+            if selected_channels:
+                self.segmentation_channel = selected_channels[0]  # Take first selection only
+                self.workflow_state['segmentation_channel'] = self.segmentation_channel
             
-            # If regions are selected, only show channels available across those regions
-            if self.regions:
-                # Initialize with channels from the first region
-                region_to_channels = self.experiment_metadata.get('region_to_channels', {})
-                for region in self.regions:
-                    if region in region_to_channels:
-                        region_channels = set(region_to_channels[region])
-                        if region == self.regions[0]:  # First region
-                            available_channels = region_channels
-                        else:
-                            # For subsequent regions, get the union of channels
-                            available_channels = available_channels.union(region_channels)
-                
-                available_items = sorted(list(available_channels))
-                if not available_items:
-                    # Fallback to all channels if no region-specific channels found
-                    available_items = self.experiment_metadata['channels']
-            else:
-                # If no regions selected, show all available channels
-                available_items = self.experiment_metadata['channels']
-            
-            item_type = "channels"
-            self._handle_list_selection(available_items, item_type, self.selected_channels)
-            self.workflow_state['selected_channels'] = self.selected_channels
+        elif step_name == "select_analysis_channels" and not self.analysis_channels:
+            available_items = self.experiment_metadata['channels']
+            item_type = "analysis channel"
+            self.analysis_channels = self._handle_list_selection(available_items, item_type, self.analysis_channels)
+            self.workflow_state['analysis_channels'] = self.analysis_channels
             
         else:
             print("\nPress Enter when you have completed this step...")
@@ -760,452 +777,201 @@ class WorkflowOrchestrator:
         return True
     
     def _handle_list_selection(self, available_items: List[str], item_type: str, target_list: List[str]):
-        """Helper function to handle selection from a list of items."""
-        if not available_items:
-            logger.warning(f"No available {item_type} found in metadata.")
-            print(f"\nNo available {item_type} found. Skipping selection.")
-            return
+        """
+        Handle selection of items from a list with interactive CLI.
         
-        print(f"\nAvailable {item_type}:")
+        Args:
+            available_items (List[str]): List of available items to choose from
+            item_type (str): Type of items being selected (e.g., 'condition', 'channel')
+            target_list (List[str]): List to store selected items
+            
+        Returns:
+            List[str]: List of selected items
+        """
+        if not available_items:
+            logger.warning(f"No {item_type}s available for selection")
+            return []
+            
+        print(f"\nAvailable {item_type}s:")
         for i, item in enumerate(available_items, 1):
             print(f"{i}. {item}")
-        
-        print(f"\nInput options for {item_type}:")
-        print(f"- Enter {item_type} as space-separated text (e.g., '{available_items[0]} {available_items[-1]}')")
-        print(f"- Enter numbers from the list (e.g., '1 {len(available_items)}')")
-        print(f"- Type 'all' to select all {item_type}")
-        
-        user_input = input("\nEnter your selection: ").strip()
-        
-        if user_input.lower() == 'all':
-            target_list.extend(available_items)
-        elif user_input:
-            inputs = user_input.split()
-            try:
-                # Try to parse as indices (1-based)
-                indices = [int(x) for x in inputs]
-                if all(1 <= idx <= len(available_items) for idx in indices):
-                    selected_items = [available_items[idx-1] for idx in indices]
-                    target_list.extend(selected_items)
-                else:
-                    # If some indices are invalid, treat as direct input but check validity
-                    valid_inputs = [inp for inp in inputs if inp in available_items]
-                    invalid_inputs = [inp for inp in inputs if inp not in available_items]
-                    if invalid_inputs:
-                        logger.warning(f"Ignoring invalid {item_type}: {', '.join(invalid_inputs)}")
-                    if valid_inputs:
-                        target_list.extend(valid_inputs)
-                    else:
-                        logger.warning(f"No valid {item_type} selected from input: '{user_input}'")
-            except ValueError:
-                # Not numbers, treat as direct item names, check validity
-                valid_inputs = [inp for inp in inputs if inp in available_items]
-                invalid_inputs = [inp for inp in inputs if inp not in available_items]
-                if invalid_inputs:
-                    logger.warning(f"Ignoring invalid {item_type}: {', '.join(invalid_inputs)}")
-                if valid_inputs:
-                    target_list.extend(valid_inputs)
-                else:
-                    logger.warning(f"No valid {item_type} selected from input: '{user_input}'")
             
-        if not target_list:
-            logger.warning(f"No {item_type} were selected. Proceeding without specific {item_type} filter.")
-            print(f"\nWarning: No {item_type} selected.")
+        print(f"\nInput options for {item_type}s:")
+        print(f"- Enter {item_type}s as space-separated text (e.g., '{available_items[0]} {available_items[-1] if len(available_items) > 1 else available_items[0]}')")
+        print(f"- Enter numbers from the list (e.g., '1 {len(available_items)}')")
+        print(f"- Type 'all' to select all {item_type}s")
         
-        # Remove duplicates and sort
-        target_list[:] = sorted(list(set(target_list)))
-        logger.info(f"Selected {item_type}: {target_list}")
+        while True:
+            selection = input(f"\nEnter your selection: ").strip()
+            
+            if selection.lower() == 'all':
+                return available_items
+                
+            # Try to parse as numbers first
+            try:
+                indices = [int(x) for x in selection.split()]
+                if all(1 <= i <= len(available_items) for i in indices):
+                    return [available_items[i-1] for i in indices]
+            except ValueError:
+                pass
+                
+            # If not numbers, treat as direct item names
+            selected_items = [item.strip() for item in selection.split()]
+            if all(item in available_items for item in selected_items):
+                return selected_items
+                
+            print(f"Invalid selection. Please try again.")
     
     def run_workflow(self):
         """
-        Run the entire workflow according to the configuration.
+        Run the complete workflow.
         
         Returns:
-            bool: True if the workflow completed successfully, False otherwise.
+            bool: True if workflow completed successfully, False otherwise
         """
-        steps = self.config.get('steps', [])
-        total_steps = len(steps)
+        logger.info("Starting workflow execution")
         
-        logger.info(f"Starting workflow with {total_steps} steps")
-        logger.info(f"Input directory: {self.input_dir}")
-        logger.info(f"Output directory: {self.output_dir}")
-        
-        # First, set up the base directories
-        logger.info("Setting up base directory structure first")
-        if not self.setup_base_directories():
-            logger.error("Failed to set up base directory structure")
-            return False
-        
-        # Create a mapping of step names to indices for later reference
-        step_name_to_index = {step.get('name'): i for i, step in enumerate(steps)}
-        
-        # Check if we have a prepare_input_structure step that needs to run BEFORE selections
-        prepare_input_step_index = None
-        for i, step in enumerate(steps):
-            if step.get('name') == 'prepare_input_structure' or 'prepare_input' in step.get('name', '').lower():
-                prepare_input_step_index = i
-                break
-        
-        # Run the prepare_input_structure step first if it exists
-        if prepare_input_step_index is not None:
-            prepare_step = steps[prepare_input_step_index]
-            step_name = prepare_step.get('name')
-            step_type = prepare_step.get('type')
-            script_path = prepare_step.get('path')
-            args = prepare_step.get('args', [])
-            
-            # Skip if it's in the skip list
-            if step_name not in self.skip_steps:
-                logger.info(f"Running input preparation step first: {step_name}")
-                
-                # Process the args if needed
-                if isinstance(args, list):
-                    processed_args = []
-                    for arg in args:
-                        processed_arg = arg.replace('{input_dir}', str(self.input_dir)) \
-                                          .replace('{output_dir}', str(self.output_dir))
-                        processed_args.append(processed_arg)
-                    args = processed_args
-                elif isinstance(args, str):
-                    args = args.replace('{input_dir}', str(self.input_dir)) \
-                               .replace('{output_dir}', str(self.output_dir))
-                
-                success = False
-                if step_type == 'bash':
-                    success = self.run_bash_script(script_path, args)
-                
-                if not success:
-                    logger.error(f"Input preparation step failed: {step_name}")
-                    return False
-                
-                # Mark step as completed
-                self.workflow_state['steps_completed'].append(step_name)
-                self._save_state()
-            else:
-                logger.info(f"Skipping input preparation step: {step_name}")
-                self.workflow_state['steps_skipped'].append(step_name)
-                self._save_state()
-            
-            # After running the prepare_input step, refresh the metadata
-            logger.info("Refreshing experiment metadata after input preparation")
-            self.experiment_metadata = self._extract_experiment_metadata()
-        
-        # Now validate that the input directory contains data with the expected structure
-        if not any(self.experiment_metadata.get('conditions', [])):
-            logger.error("No conditions found in the input directory. Make sure the input directory contains valid data.")
-            print("\n============================================================")
-            print("ERROR: No conditions detected in input directory.")
-            print(f"Input directory: {self.input_dir}")
-            print("Check that the directory contains subdirectories for each condition.")
-            print("Each condition should contain TIF files with naming format like: [RegionName]_Merged_t00_ch00.tif")
-            print("============================================================\n")
-            return False
-        
-        # Process steps in the required order
-        # First process the selection steps in the correct sequence
-        selection_steps = ["select_datatype", "select_condition", "select_timepoints", "select_regions", "select_channels"]
-        current_step_index = 0
-        
-        while current_step_index < len(selection_steps):
-            step_name = selection_steps[current_step_index]
-            
-            if step_name in step_name_to_index:
-                i = step_name_to_index[step_name]
-                step = steps[i]
-                
-                # Skip this step if it's in the skip list
-                if step_name in self.skip_steps:
-                    logger.info(f"Skipping step {i+1}/{total_steps}: {step_name}")
-                    self.workflow_state['steps_skipped'].append(step_name)
-                    self._save_state()
-                    current_step_index += 1
-                    continue
-                
-                # Update workflow state
-                self.workflow_state['current_step'] = {
-                    'name': step_name,
-                    'index': i+1,
-                    'total': total_steps
-                }
-                self._save_state()
-                
-                logger.info(f"Running step {i+1}/{total_steps}: {step_name}")
-                
-                # Process the selection step
-                instructions = step.get('instructions', 'Complete this manual step.')
-                success = self.prompt_manual_step(step_name, instructions)
-                
-                if not success:
-                    logger.error(f"Step {i+1}/{total_steps} failed: {step_name}")
-                    return False
-                
-                # Verify that essential selections have been made after the appropriate steps
-                if step_name == "select_condition" and not self.selected_conditions:
-                    logger.error("No conditions were selected. At least one condition must be selected to continue.")
-                    print("\n============================================================")
-                    print("ERROR: No conditions were selected. Workflow cannot continue.")
-                    print("Please run again and select at least one condition.")
-                    print("============================================================\n")
-                    return False
-                
-                # Mark step as completed
-                self.workflow_state['steps_completed'].append(step_name)
-                self._save_state()
-                
-                # After certain selection steps, set up corresponding directories
-                if step_name == "select_condition":
-                    logger.info("Setting up condition directories after condition selection")
-                    if not self.setup_condition_directories():
-                        logger.error("Failed to set up condition directories")
-                        return False
-                
-                elif step_name == "select_timepoints":
-                    logger.info("Setting up timepoint directories after timepoint selection")
-                    if not self.setup_timepoint_directories():
-                        logger.error("Failed to set up timepoint directories")
-                        return False
-            
-            current_step_index += 1
-        
-        # After all selections are made, now set up the final directory structure and copy files
-        logger.info("Setting up final analysis directories based on all selections")
-        if not self.setup_analysis_directories():
-            logger.error("Failed to set up analysis directories")
-            return False
-        
-        # Log selected items
-        if self.selected_datatype:
-            logger.info(f"Selected data type: {self.selected_datatype}")
-        if self.selected_conditions:
-            logger.info(f"Selected conditions: {', '.join(self.selected_conditions)}")
-        if self.selected_channels:
-            logger.info(f"Selected channels: {', '.join(self.selected_channels)}")
-        if self.regions:
-            logger.info(f"Selected regions: {', '.join(self.regions)}")
-        if self.timepoints:
-            logger.info(f"Selected timepoints: {', '.join(self.timepoints)}")
-        logger.info(f"Number of bins for grouping cells: {self.bins}")
-        
-        # Log experiment metadata
-        logger.info(f"Experiment metadata:")
-        logger.info(f"  Conditions: {', '.join(self.experiment_metadata['conditions'])}")
-        logger.info(f"  All available regions: {', '.join(self.experiment_metadata['regions'])}")
-        logger.info(f"  All available timepoints: {', '.join(self.experiment_metadata['timepoints'])}")
-        logger.info(f"  All available channels: {', '.join(self.experiment_metadata['channels'])}")
-        logger.info(f"  Inferred data type: {self.experiment_metadata['datatype_inferred']}")
-        
-        # Determine the start index if --start-from is provided
-        start_index = 0
-        if self.start_from:
-            found_start = False
-            for idx, step_cfg in enumerate(steps):
-                if step_cfg.get('name') == self.start_from:
-                    start_index = idx
-                    found_start = True
-                    logger.info(f"Starting workflow from step {start_index + 1}: {self.start_from}")
-                    break
-            if not found_start:
-                logger.error(f"Start step '{self.start_from}' not found in workflow configuration.")
+        try:
+            # Set up base directory structure first
+            if not self.setup_base_directories():
+                logger.error("Failed to set up base directories")
                 return False
             
-        # Now process the remaining non-selection steps
-        i = start_index
-        while i < len(steps):
-            step = steps[i]
-            step_name = step.get('name')
-            step_type = step.get('type')
+            # Load workflow steps from config
+            steps = self.config.get('steps', [])
+            if not steps:
+                logger.error("No steps defined in workflow configuration")
+                return False
             
-            # Skip if it's a selection step (already processed above)
-            if step_name in selection_steps:
-                i += 1
-                continue
+            # Define which steps are manual selection steps that should always be executed first
+            manual_selection_steps = [
+                'select_datatype',
+                'select_condition', 
+                'select_timepoints',
+                'select_regions',
+                'select_segmentation_channel',
+                'select_analysis_channels'
+            ]
             
-            # Skip this step if it's in the skip list
-            if step_name in self.skip_steps:
-                logger.info(f"Skipping step {i+1}/{total_steps}: {step_name}")
-                self.workflow_state['steps_skipped'].append(step_name)
-                self._save_state()
-                i += 1
-                continue
-            
-            script_path = step.get('path')
-            args = step.get('args', [])
-            
-            # Update arguments for group_cells step to use the specified bins
-            if step_name == "group_cells" and isinstance(args, list):
-                # Find the index of the "--bins" argument
-                try:
-                    bins_index = args.index("--bins")
-                    # Replace the value after "--bins" with the user-specified value
-                    if bins_index + 1 < len(args):
-                        args[bins_index + 1] = str(self.bins)
-                except ValueError:
-                    # If "--bins" is not found, append it and its value
-                    args.extend(["--bins", str(self.bins)])
-            
-            # Replace placeholders in args
-            if isinstance(args, list):
-                processed_args = []
-                idx = 0
-                while idx < len(args):
-                    arg = args[idx]
-                    # Base replacements
-                    arg = arg.replace('{input_dir}', str(self.input_dir)) \
-                             .replace('{output_dir}', str(self.output_dir)) \
-                             .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
-
-                    # Handle list placeholders - extend args instead of joining into one string
-                    if arg == '--conditions' and '{conditions}' in args[idx+1] and self.selected_conditions:
-                        processed_args.append(arg) # Add the flag ('--conditions')
-                        processed_args.extend(self.selected_conditions) # Add each selected condition as a separate arg
-                        idx += 2 # Skip the flag and the placeholder
-                        continue
-                    elif arg == '--channels' and '{channels}' in args[idx+1] and self.selected_channels:
-                        processed_args.append(arg)
-                        processed_args.extend(self.selected_channels)
-                        idx += 2
-                        continue
-                    elif arg == '--regions' and '{regions}' in args[idx+1] and self.regions:
-                        processed_args.append(arg)
-                        processed_args.extend(self.regions)
-                        idx += 2
-                        continue
-                    elif arg == '--timepoints' and '{timepoints}' in args[idx+1] and self.timepoints:
-                        processed_args.append(arg)
-                        processed_args.extend(self.timepoints)
-                        idx += 2
-                        continue
+            # If start_from is specified, first execute all manual selection steps
+            if self.start_from:
+                logger.info(f"Executing manual selection steps before starting from '{self.start_from}'")
+                
+                for step in steps:
+                    step_name = step['name']
                     
-                    # If placeholder exists but no selection, remove the flag and placeholder
-                    if arg == '--conditions' and '{conditions}' in args[idx+1]:
-                         idx += 2
-                         continue
-                    elif arg == '--channels' and '{channels}' in args[idx+1]:
-                         idx += 2
-                         continue
-                    elif arg == '--regions' and '{regions}' in args[idx+1]:
-                         idx += 2
-                         continue
-                    elif arg == '--timepoints' and '{timepoints}' in args[idx+1]:
-                         idx += 2
-                         continue
-                     
-                    # Handle non-list replacements or flags without list values (like --verbose)
-                    # Replace placeholders if they exist even without specific selections (might become empty string)
-                    arg = arg.replace('{conditions}', '') # Should not happen if logic above works
-                    arg = arg.replace('{channels}', '')
-                    arg = arg.replace('{regions}', '')
-                    arg = arg.replace('{timepoints}', '')
-                    processed_args.append(arg)
-                    idx += 1
-                
-                args = processed_args
-            elif isinstance(args, str):
-                args = args.replace('{input_dir}', str(self.input_dir)) \
-                           .replace('{output_dir}', str(self.output_dir)) \
-                           .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
-                
-                # Replace region and timepoint placeholders if specific ones are selected
-                if '{regions}' in args and self.regions:
-                    args = args.replace('{regions}', ','.join(self.regions))
-                
-                if '{timepoints}' in args and self.timepoints:
-                    args = args.replace('{timepoints}', ','.join(self.timepoints))
-            
-            # Update workflow state
-            self.workflow_state['current_step'] = {
-                'name': step_name,
-                'index': i+1,
-                'total': total_steps
-            }
-            self._save_state()
-            
-            logger.info(f"Running step {i+1}/{total_steps}: {step_name}")
-            
-            success = False
-            result_data = {}
-            
-            if step_type == 'bash':
-                success = self.run_bash_script(script_path, args)
-            elif step_type == 'python':
-                success, result_data = self.run_python_script(script_path, args)
-            elif step_type == 'imagej_macro':
-                success = self.run_imagej_macro(script_path, args)
-            elif step_type == 'gui_application':
-                instructions = step.get('instructions', 'Complete the necessary tasks in the GUI application.')
-                success = self.launch_gui_application(script_path, instructions)
-            elif step_type == 'manual':
-                instructions = step.get('instructions', 'Complete this manual step.')
-                success = self.prompt_manual_step(step_name, instructions)
-            elif step_type == 'function':
-                # This is a new step type that calls a method within the orchestrator
-                function_name = step.get('function')
-                if hasattr(self, function_name) and callable(getattr(self, function_name)):
-                    try:
-                        function_args = step.get('function_args', {})
-                        # Replace placeholders in function args
-                        for key, value in function_args.items():
-                            if isinstance(value, str):
-                                function_args[key] = value.replace('{input_dir}', str(self.input_dir)) \
-                                                         .replace('{output_dir}', str(self.output_dir)) \
-                                                         .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ'))
+                    # Execute manual selection steps
+                    if step_name in manual_selection_steps:
+                        # Skip if step is in skip list
+                        if step_name in self.skip_steps:
+                            logger.info(f"Skipping manual selection step: {step_name}")
+                            self.workflow_state['steps_skipped'].append(step_name)
+                            continue
                         
-                        # Call the function
-                        result = getattr(self, function_name)(**function_args)
-                        success = result if isinstance(result, bool) else True
-                    except Exception as e:
-                        logger.error(f"Error executing function {function_name}: {e}")
-                        success = False
+                        logger.info(f"Executing manual selection step: {step_name}")
+                        self.workflow_state['current_step'] = step_name
+                        
+                        # Handle manual step
+                        if step['type'] == 'manual':
+                            success = self.prompt_manual_step(step_name, step.get('instructions', ''))
+                            
+                            # Set up directories after specific manual steps
+                            if success and step_name == 'select_condition' and self.selected_conditions:
+                                if not self.setup_condition_directories():
+                                    logger.error("Failed to set up condition directories")
+                                    return False
+                            elif success and step_name == 'select_timepoints' and self.timepoints:
+                                if not self.setup_timepoint_directories():
+                                    logger.error("Failed to set up timepoint directories")
+                                    return False
+                            elif success and step_name == 'select_analysis_channels' and self.analysis_channels:
+                                # Set up final analysis directory structure after all selections are made
+                                if not self.setup_analysis_directories():
+                                    logger.error("Failed to set up analysis directories")
+                                    return False
+                        else:
+                            success = False
+                            logger.error(f"Manual selection step {step_name} has unexpected type: {step['type']}")
+                        
+                        if not success:
+                            logger.error(f"Manual selection step {step_name} failed")
+                            return False
+                            
+                        self.workflow_state['steps_completed'].append(step_name)
+                        self._save_state()
+                
+                # Find start step index for processing steps
+                start_index = 0
+                for i, step in enumerate(steps):
+                    if step['name'] == self.start_from:
+                        start_index = i
+                        break
                 else:
-                    logger.error(f"Function {function_name} not found in orchestrator")
-                    success = False
+                    logger.error(f"Start step '{self.start_from}' not found in workflow")
+                    return False
+                
+                logger.info(f"Starting processing steps from step: {self.start_from}")
+                
             else:
-                logger.error(f"Unknown step type: {step_type}")
-                success = False
+                # Normal execution from the beginning
+                start_index = 0
             
-            if not success:
-                logger.error(f"Step {i+1}/{total_steps} failed: {step_name}")
-                return False
-            
-            # Check if we need to handle the "more bins" request from threshold_grouped_cells
-            if step_name == "threshold_grouped_cells" and result_data.get('needs_more_bins', False):
-                logger.info("User requested more bins for better cell grouping")
+            # Execute processing steps
+            for i, step in enumerate(steps[start_index:], start_index):
+                step_name = step['name']
                 
-                # Increment the bin count
-                self.bins += 1
-                logger.info(f"Increasing bin count to {self.bins}")
+                # Skip manual selection steps if we already executed them above
+                if self.start_from and step_name in manual_selection_steps:
+                    continue
                 
-                # Update the workflow state
-                self.workflow_state['bins'] = self.bins
+                # Skip if step is in skip list
+                if step_name in self.skip_steps:
+                    logger.info(f"Skipping step: {step_name}")
+                    self.workflow_state['steps_skipped'].append(step_name)
+                    continue
+                
+                logger.info(f"Executing step {i+1}/{len(steps)}: {step_name}")
+                self.workflow_state['current_step'] = step_name
+                
+                # Handle different step types
+                if step['type'] == 'bash':
+                    success = self.run_bash_script(step['path'], step.get('args', []))
+                elif step['type'] == 'python':
+                    success = self.run_python_script(step['path'], step.get('args', []))
+                elif step['type'] == 'manual':
+                    success = self.prompt_manual_step(step_name, step.get('instructions', ''))
+                    
+                    # Set up directories after specific manual steps
+                    if success and step_name == 'select_condition' and self.selected_conditions:
+                        if not self.setup_condition_directories():
+                            logger.error("Failed to set up condition directories")
+                            return False
+                    elif success and step_name == 'select_timepoints' and self.timepoints:
+                        if not self.setup_timepoint_directories():
+                            logger.error("Failed to set up timepoint directories")
+                            return False
+                    elif success and step_name == 'select_analysis_channels' and self.analysis_channels:
+                        # Set up final analysis directory structure after all selections are made
+                        if not self.setup_analysis_directories():
+                            logger.error("Failed to set up analysis directories")
+                            return False
+                else:
+                    logger.error(f"Unknown step type: {step['type']}")
+                    success = False
+                
+                if not success:
+                    logger.error(f"Step {step_name} failed")
+                    return False
+                    
+                self.workflow_state['steps_completed'].append(step_name)
                 self._save_state()
                 
-                # Prepare to restart from the group_cells step
-                if "group_cells" in step_name_to_index:
-                    group_cells_index = step_name_to_index["group_cells"]
-                    logger.info(f"Restarting workflow from 'group_cells' step (step {group_cells_index+1})")
-                    
-                    # Reset all completions after group_cells
-                    for j in range(group_cells_index, i+1):
-                        step_to_reset = steps[j].get('name')
-                        if step_to_reset in self.workflow_state['steps_completed']:
-                            self.workflow_state['steps_completed'].remove(step_to_reset)
-                    
-                    # Jump back to group_cells step
-                    i = group_cells_index
-                    continue
+            logger.info("Workflow completed successfully")
+            return True
             
-            # Mark step as completed
-            self.workflow_state['steps_completed'].append(step_name)
-            self._save_state()
-            
-            # Proceed to next step
-            i += 1
-        
-        # Workflow completed successfully
-        self.workflow_state['end_time'] = datetime.now().isoformat()
-        self._save_state()
-        logger.info("Workflow completed successfully")
-        return True
+        except Exception as e:
+            logger.error(f"Error during workflow execution: {e}", exc_info=True)
+            return False
 
 
 def main():
@@ -1224,8 +990,10 @@ def main():
                         help='Specify the data type (overrides manual selection)')
     parser.add_argument('--conditions', nargs='+', default=[],
                         help='Specific conditions to analyze (e.g., Dish_1 Dish_2)')
-    parser.add_argument('--channels', nargs='+', default=[],
-                        help='Specific channels to analyze (e.g., ch00 ch01)')
+    parser.add_argument('--segmentation-channel', type=str,
+                        help='Channel to use for cell segmentation (e.g., ch00)')
+    parser.add_argument('--analysis-channels', nargs='+', default=[],
+                        help='Channels to analyze (e.g., ch01 ch02 ch03)')
     parser.add_argument('--timepoints', '-t', nargs='+', default=[],
                         help='Specific timepoints to analyze (e.g., t00 t03)')
     parser.add_argument('--regions', '-r', nargs='+', default=[],
@@ -1263,7 +1031,8 @@ def main():
         skip_steps=args.skip,
         datatype=args.datatype,
         conditions=args.conditions,
-        channels=args.channels,
+        segmentation_channel=args.segmentation_channel,
+        analysis_channels=args.analysis_channels,
         timepoints=args.timepoints,
         regions=args.regions,
         setup_only=args.setup_only,
