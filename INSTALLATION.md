@@ -20,7 +20,7 @@ This guide covers the installation and setup of the microscopy analysis workflow
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/microscopy-analysis-single-cell.git
+git clone https://github.com/marcusjoshm/microscopy-analysis-single-cell.git
 cd microscopy-analysis-single-cell
 ```
 
