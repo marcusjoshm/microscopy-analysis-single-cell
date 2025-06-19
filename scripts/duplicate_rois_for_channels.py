@@ -79,7 +79,9 @@ def duplicate_rois_for_channels(roi_dir, channels, verbose=False):
         return 1
     
     logger.info(f"Found {len(roi_files)} ROI files to process")
-    successful = 0
+    successful_copies = 0
+    channels_already_exist = set()
+    channels_processed = set()
     
     for roi_file in roi_files:
         if verbose:
@@ -94,6 +96,10 @@ def duplicate_rois_for_channels(roi_dir, channels, verbose=False):
         except Exception as e:
             logger.warning(f"Error extracting channel from filename: {e}")
             continue
+        
+        # Track which channels already have ROI files
+        if channel in channels:
+            channels_already_exist.add(channel)
         
         # Create a copy for each target channel
         for target_channel in channels:
@@ -115,17 +121,27 @@ def duplicate_rois_for_channels(roi_dir, channels, verbose=False):
                 shutil.copy2(roi_file, new_path)
                 if verbose:
                     logger.debug(f"Copied {roi_file} -> {new_path}")
-                successful += 1
+                successful_copies += 1
+                channels_processed.add(target_channel)
             except Exception as e:
                 logger.error(f"Failed to copy ROI file: {e}")
                 continue
     
-    logger.info(f"Successfully processed {successful} ROI files")
-    logger.info(f"Created ROI files for channels: {channels}")
+    # Check if all requested channels are now available (either existed or were created)
+    all_channels_available = channels_already_exist.union(channels_processed)
+    missing_channels = set(channels) - all_channels_available
     
-    if successful == 0:
-        logger.error("No ROI files were successfully processed")
+    logger.info(f"Successfully copied {successful_copies} ROI files")
+    logger.info(f"Channels that already existed: {sorted(list(channels_already_exist))}")
+    logger.info(f"Channels created by copying: {sorted(list(channels_processed))}")
+    
+    if missing_channels:
+        logger.error(f"Failed to provide ROI files for channels: {sorted(list(missing_channels))}")
         return 1
+    elif successful_copies == 0 and len(channels_already_exist) > 0:
+        logger.info("All requested channels already have ROI files - no copying needed")
+    
+    logger.info(f"All requested channels now have ROI files: {channels}")
     
     return 0
 

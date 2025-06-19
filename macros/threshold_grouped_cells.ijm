@@ -11,9 +11,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_masks/";
-flagFile = "/Volumes/NX-01-A/2025-06-10_analysis_TEST/grouped_masks/NEED_MORE_BINS.flag";
+cellsDir = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_masks/";
+flagFile = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_masks/NEED_MORE_BINS.flag";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -65,7 +65,7 @@ for (d = 0; d < conditionDirs.length; d++) {
         
         // Check if this region directory matches any of the specified channels
         channelMatch = false;
-        if (indexOf(regionName, "ch00") >= 0 || indexOf(regionName, "ch02") >= 0) {
+        if (indexOf(regionName, "ch00") >= 0) {
             channelMatch = true;
         }
         if (!channelMatch) {

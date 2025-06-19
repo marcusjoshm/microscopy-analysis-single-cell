@@ -149,7 +149,7 @@
         "--output-dir",
         "{output_dir}/grouped_cells",
         "--bins",
-        "5",
+        "{bins}",
         "--force-clusters",
         "--channels",
         "{analysis_channels}"

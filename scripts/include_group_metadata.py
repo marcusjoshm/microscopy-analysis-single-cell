@@ -423,57 +423,57 @@ def main():
         logger.error("No group metadata files found")
         return 1
     
-    # Process each metadata file
-    successful = 0
-    for metadata_file in metadata_files:
-        # Skip if channels are specified and this file doesn't match any of them
-        if args.channels:
+    # Filter metadata files by channels if specified
+    if args.channels:
+        filtered_files = []
+        for metadata_file in metadata_files:
             file_channels = [ch for ch in args.channels if ch in str(metadata_file)]
-            if not file_channels:
+            if file_channels:
+                logger.info(f"Including {metadata_file} for channels {file_channels}")
+                filtered_files.append(metadata_file)
+            else:
                 logger.info(f"Skipping {metadata_file} - no matching channels")
-                continue
-            logger.info(f"Processing channels {file_channels} for {metadata_file}")
-        
-        logger.info(f"Processing metadata file: {metadata_file}")
-        
-        # Load metadata
-        try:
-            metadata_df = pd.read_csv(metadata_file)
-        except Exception as e:
-            logger.error(f"Failed to read metadata file {metadata_file}: {e}")
-            continue
-        
-        # Find matching analysis file
-    analysis_file = find_analysis_file(args.analysis_dir, args.output_dir)
-    if not analysis_file:
-            logger.warning(f"No matching analysis file found for {metadata_file}")
-            continue
-        
-        # Determine output path
-        if args.output_file:
-            output_path = args.output_file
-        elif args.output_dir:
-            output_path = os.path.join(args.output_dir, os.path.basename(analysis_file))
-    else:
-            output_path = analysis_file
-        
-        # Merge metadata with analysis results
-        if merge_metadata_with_analysis(
-            metadata_df,
-            analysis_file,
-            output_path,
-            overwrite=args.overwrite,
-            replace=args.replace
-        ):
-            successful += 1
+        metadata_files = filtered_files
     
-    logger.info(f"Successfully processed {successful} out of {len(metadata_files)} metadata files")
-    
-    if successful == 0:
-        logger.error("No metadata files were successfully processed")
+    if not metadata_files:
+        logger.error("No metadata files match the specified channels")
         return 1
     
-    return 0
+    # Load and combine all metadata
+    group_metadata_df = load_group_metadata(metadata_files)
+    if group_metadata_df is None:
+        logger.error("Failed to load group metadata")
+        return 1
+    
+    # Find the analysis file
+    analysis_file = find_analysis_file(args.analysis_dir, args.output_dir)
+    if not analysis_file:
+        logger.error("No analysis file found")
+        return 1
+    
+    # Determine output path
+    if args.output_file:
+        output_path = Path(args.output_file)
+    elif args.output_dir:
+        output_path = Path(args.output_dir) / analysis_file.name
+    else:
+        output_path = analysis_file
+    
+    # Merge metadata with analysis results
+    success = merge_metadata_with_analysis(
+        group_metadata_df,
+        analysis_file,
+        output_path,
+        overwrite=args.overwrite,
+        replace=args.replace
+    )
+    
+    if success:
+        logger.info("Successfully processed group metadata")
+        return 0
+    else:
+        logger.error("Failed to process group metadata")
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

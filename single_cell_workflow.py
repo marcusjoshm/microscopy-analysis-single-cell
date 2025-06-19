@@ -401,7 +401,15 @@ class WorkflowOrchestrator:
                             # Check if file matches our selected criteria
                             region_match = any(region in filename for region in regions_to_process)
                             timepoint_match = any(timepoint in filename for timepoint in timepoints_to_process)
-                            channel_match = any(channel in filename for channel in channels_to_process) if channels_to_process else True
+                            
+                            # Copy files for both segmentation channel and analysis channels
+                            # bin_images_for_segmentation needs segmentation channel files from raw_data
+                            # Later analysis steps need analysis channel files from raw_data
+                            channels_needed = set(channels_to_process) if channels_to_process else set()
+                            if self.segmentation_channel:
+                                channels_needed.add(self.segmentation_channel)
+                            
+                            channel_match = any(channel in filename for channel in channels_needed) if channels_needed else True
                             
                             if region_match and timepoint_match and channel_match:
                                 rel_path = item.relative_to(source_cond_dir)
@@ -439,6 +447,101 @@ class WorkflowOrchestrator:
         except Exception as e:
             logger.error(f"Failed to save workflow state: {e}")
     
+    def _restart_from_step(self, step_name):
+        """
+        Restart the workflow from a specific step.
+        
+        Args:
+            step_name (str): Name of the step to restart from
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        logger.info(f"Restarting workflow from step: {step_name}")
+        
+        try:
+            # Load workflow steps from config
+            steps = self.config.get('steps', [])
+            if not steps:
+                logger.error("No steps defined in workflow configuration")
+                return False
+            
+            # Find the step to restart from
+            start_index = None
+            for i, step in enumerate(steps):
+                if step['name'] == step_name:
+                    start_index = i
+                    break
+            
+            if start_index is None:
+                logger.error(f"Step '{step_name}' not found in workflow")
+                return False
+            
+            # Execute steps starting from the specified step
+            for i, step in enumerate(steps[start_index:], start_index):
+                step_name = step['name']
+                
+                # Skip if step is in skip list
+                if step_name in self.skip_steps:
+                    logger.info(f"Skipping step: {step_name}")
+                    self.workflow_state['steps_skipped'].append(step_name)
+                    continue
+                
+                logger.info(f"Executing step {i+1}/{len(steps)}: {step_name}")
+                self.workflow_state['current_step'] = step_name
+                
+                # Handle different step types
+                if step['type'] == 'bash':
+                    success = self.run_bash_script(step['path'], step.get('args', []))
+                elif step['type'] == 'python':
+                    success, result_data = self.run_python_script(step['path'], step.get('args', []))
+                    
+                    # Handle special case: need more bins for cell grouping
+                    if result_data.get('needs_more_bins', False):
+                        logger.info(f"Step {step_name} indicated need for more bins. Going back to group_cells step.")
+                        
+                        # Find the group_cells step and restart from there
+                        group_cells_index = None
+                        for j, prev_step in enumerate(steps):
+                            if prev_step['name'] == 'group_cells':
+                                group_cells_index = j
+                                break
+                        
+                        if group_cells_index is not None:
+                            logger.info(f"Restarting workflow from group_cells step (index {group_cells_index})")
+                            # Update bins count to add one more bin
+                            self.bins += 1
+                            logger.info(f"Increased bin count to {self.bins}")
+                            
+                            # Update workflow state
+                            self.workflow_state['bins'] = self.bins
+                            self._save_state()
+                            
+                            # Restart from group_cells step recursively
+                            return self._restart_from_step('group_cells')
+                        else:
+                            logger.error("Could not find group_cells step to restart from")
+                            return False
+                elif step['type'] == 'manual':
+                    success = self.prompt_manual_step(step_name, step.get('instructions', ''))
+                else:
+                    logger.error(f"Unknown step type: {step['type']}")
+                    success = False
+                
+                if not success:
+                    logger.error(f"Step {step_name} failed")
+                    return False
+                    
+                self.workflow_state['steps_completed'].append(step_name)
+                self._save_state()
+                
+            logger.info("Workflow restart completed successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error during workflow restart: {e}", exc_info=True)
+            return False
+    
     def run_bash_script(self, script_path, args=None):
         """
         Run a bash script with the specified arguments.
@@ -455,15 +558,47 @@ class WorkflowOrchestrator:
             # Substitute placeholders in arguments
             substituted_args = []
             for arg in args:
-                arg = arg.replace('{input_dir}', str(self.input_dir)) \
-                         .replace('{output_dir}', str(self.output_dir)) \
-                         .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
-                         .replace('{conditions}', ' '.join(self.selected_conditions)) \
-                         .replace('{regions}', ' '.join(self.regions)) \
-                         .replace('{timepoints}', ' '.join(self.timepoints)) \
-                         .replace('{segmentation_channel}', self.segmentation_channel or '') \
-                         .replace('{analysis_channels}', ' '.join(self.analysis_channels))
-                substituted_args.append(arg)
+                # Handle list placeholders that need to be expanded into multiple arguments
+                if '{conditions}' in arg and self.selected_conditions:
+                    # Replace {conditions} placeholder with multiple arguments
+                    base_arg = arg.replace('{conditions}', '').strip()
+                    if base_arg:  # If there's text before/after the placeholder
+                        substituted_args.extend([base_arg + condition for condition in self.selected_conditions])
+                    else:  # If the arg is just {conditions}
+                        substituted_args.extend(self.selected_conditions)
+                    continue
+                elif '{regions}' in arg and self.regions:
+                    # Replace {regions} placeholder with multiple arguments  
+                    base_arg = arg.replace('{regions}', '').strip()
+                    if base_arg:
+                        substituted_args.extend([base_arg + region for region in self.regions])
+                    else:
+                        substituted_args.extend(self.regions)
+                    continue
+                elif '{timepoints}' in arg and self.timepoints:
+                    # Replace {timepoints} placeholder with multiple arguments
+                    base_arg = arg.replace('{timepoints}', '').strip()
+                    if base_arg:
+                        substituted_args.extend([base_arg + timepoint for timepoint in self.timepoints])
+                    else:
+                        substituted_args.extend(self.timepoints)
+                    continue
+                elif '{analysis_channels}' in arg and self.analysis_channels:
+                    # Replace {analysis_channels} placeholder with multiple arguments
+                    base_arg = arg.replace('{analysis_channels}', '').strip()
+                    if base_arg:
+                        substituted_args.extend([base_arg + channel for channel in self.analysis_channels])
+                    else:
+                        substituted_args.extend(self.analysis_channels)
+                    continue
+                else:
+                    # Handle single-value placeholders normally
+                    arg = arg.replace('{input_dir}', str(self.input_dir)) \
+                             .replace('{output_dir}', str(self.output_dir)) \
+                             .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
+                             .replace('{segmentation_channel}', self.segmentation_channel or '') \
+                             .replace('{bins}', str(self.bins))
+                    substituted_args.append(arg)
             cmd.extend(substituted_args)
             
         logger.info(f"Running bash script: {script_path}")
@@ -499,15 +634,47 @@ class WorkflowOrchestrator:
         # Substitute placeholders in arguments
         substituted_args = []
         for arg in args:
-            arg = arg.replace('{input_dir}', str(self.input_dir)) \
-                     .replace('{output_dir}', str(self.output_dir)) \
-                     .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
-                     .replace('{conditions}', ' '.join(self.selected_conditions)) \
-                     .replace('{regions}', ' '.join(self.regions)) \
-                     .replace('{timepoints}', ' '.join(self.timepoints)) \
-                     .replace('{segmentation_channel}', self.segmentation_channel or '') \
-                     .replace('{analysis_channels}', ' '.join(self.analysis_channels))
-            substituted_args.append(arg)
+            # Handle list placeholders that need to be expanded into multiple arguments
+            if '{conditions}' in arg and self.selected_conditions:
+                # Replace {conditions} placeholder with multiple arguments
+                base_arg = arg.replace('{conditions}', '').strip()
+                if base_arg:  # If there's text before/after the placeholder
+                    substituted_args.extend([base_arg + condition for condition in self.selected_conditions])
+                else:  # If the arg is just {conditions}
+                    substituted_args.extend(self.selected_conditions)
+                continue
+            elif '{regions}' in arg and self.regions:
+                # Replace {regions} placeholder with multiple arguments  
+                base_arg = arg.replace('{regions}', '').strip()
+                if base_arg:
+                    substituted_args.extend([base_arg + region for region in self.regions])
+                else:
+                    substituted_args.extend(self.regions)
+                continue
+            elif '{timepoints}' in arg and self.timepoints:
+                # Replace {timepoints} placeholder with multiple arguments
+                base_arg = arg.replace('{timepoints}', '').strip()
+                if base_arg:
+                    substituted_args.extend([base_arg + timepoint for timepoint in self.timepoints])
+                else:
+                    substituted_args.extend(self.timepoints)
+                continue
+            elif '{analysis_channels}' in arg and self.analysis_channels:
+                # Replace {analysis_channels} placeholder with multiple arguments
+                base_arg = arg.replace('{analysis_channels}', '').strip()
+                if base_arg:
+                    substituted_args.extend([base_arg + channel for channel in self.analysis_channels])
+                else:
+                    substituted_args.extend(self.analysis_channels)
+                continue
+            else:
+                # Handle single-value placeholders normally
+                arg = arg.replace('{input_dir}', str(self.input_dir)) \
+                         .replace('{output_dir}', str(self.output_dir)) \
+                         .replace('{imagej_path}', self.config.get('imagej_path', 'ImageJ')) \
+                         .replace('{segmentation_channel}', self.segmentation_channel or '') \
+                         .replace('{bins}', str(self.bins))
+                substituted_args.append(arg)
         command.extend(substituted_args)
         
         logger.info(f"Running Python script: {script_path} with args: {substituted_args}") # Log arguments for clarity
@@ -937,7 +1104,36 @@ class WorkflowOrchestrator:
                 if step['type'] == 'bash':
                     success = self.run_bash_script(step['path'], step.get('args', []))
                 elif step['type'] == 'python':
-                    success = self.run_python_script(step['path'], step.get('args', []))
+                    success, result_data = self.run_python_script(step['path'], step.get('args', []))
+                    
+                    # Handle special case: need more bins for cell grouping
+                    if result_data.get('needs_more_bins', False):
+                        logger.info(f"Step {step_name} indicated need for more bins. Going back to group_cells step.")
+                        
+                        # Find the group_cells step and restart from there
+                        group_cells_index = None
+                        for j, prev_step in enumerate(steps):
+                            if prev_step['name'] == 'group_cells':
+                                group_cells_index = j
+                                break
+                        
+                        if group_cells_index is not None:
+                            logger.info(f"Restarting workflow from group_cells step (index {group_cells_index})")
+                            # Update bins count to add one more bin
+                            self.bins += 1
+                            logger.info(f"Increased bin count to {self.bins}")
+                            
+                            # Update workflow state
+                            self.workflow_state['bins'] = self.bins
+                            self._save_state()
+                            
+                            # Restart from group_cells step
+                            # We'll break out of the current loop and restart from group_cells
+                            logger.info("Restarting from group_cells step with increased bin count")
+                            return self._restart_from_step('group_cells')
+                        else:
+                            logger.error("Could not find group_cells step to restart from")
+                            return False
                 elif step['type'] == 'manual':
                     success = self.prompt_manual_step(step_name, step.get('instructions', ''))
                     

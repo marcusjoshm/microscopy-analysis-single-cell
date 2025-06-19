@@ -98,7 +98,7 @@
       "name": "group_cells",
       "type": "python",
       "path": "scripts/group_cells.py",
-      "args": ["--cells-dir", "{output_dir}/cells", "--output-dir", "{output_dir}/grouped_cells", "--bins", "5", "--force-clusters", "--channels", "{analysis_channels}"],
+      "args": ["--cells-dir", "{output_dir}/cells", "--output-dir", "{output_dir}/grouped_cells", "--bins", "{bins}", "--force-clusters", "--channels", "{analysis_channels}"],
       "description": "Group cells by expression level and create summed images for each analysis channel",
       "notes": "Optional parameters available: '--clustering-method gmm' to use GMM instead of K-means (which is now the default), '--force-clusters' to ensure all bin groups are created even with similar data"
     },
