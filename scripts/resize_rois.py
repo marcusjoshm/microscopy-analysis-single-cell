@@ -6,15 +6,17 @@ Resize ROIs Script for Single Cell Analysis Workflow
 
 This script takes ROIs from the preprocessed directory, uses ImageJ to resize them 
 to match the original images, and saves them to the ROI directory.
+
+This version uses a dedicated macro file with parameter passing instead of 
+creating permanent temporary macro files.
 """
 
 import os
 import sys
 import argparse
 import subprocess
-import tempfile
 import logging
-import shutil
+import tempfile
 from pathlib import Path
 
 # Set up logging
@@ -24,211 +26,77 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ROIResizer")
 
-def create_macro_file(input_dir, output_dir, channel, auto_close=False):
+def create_macro_with_parameters(macro_template_file, input_dir, output_dir, channel, auto_close=False):
     """
-    Create an ImageJ macro file for ROI resizing.
+    Create a temporary macro file with parameters embedded from the dedicated macro template.
     
     Args:
+        macro_template_file (str): Path to the dedicated macro template file
         input_dir (str): Input directory containing binned images and ROIs
         output_dir (str): Output directory for resized ROIs
         channel (str): Segmentation channel to process (e.g., ch00)
-        auto_close (bool): Whether to add a line to close ImageJ when the macro completes
+        auto_close (bool): Whether to add auto-close functionality
         
     Returns:
-        str: Path to the created macro file
+        str: Path to the created temporary macro file
     """
-    # Create a temporary macro file
-    macro_file = Path("macros/temp_resize_rois.ijm")
-    
-    # Ensure the directory exists
-    macro_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Generate the macro content
-    macro_content = f"""
-// Resize ROIs Macro for Single Cell Analysis Workflow
-// Input and output directories
+    try:
+        # Read the dedicated macro template
+        with open(macro_template_file, 'r') as f:
+            template_content = f.read()
+        
+        # Remove the #@ parameter declarations since we're embedding the values
+        lines = template_content.split('\n')
+        filtered_lines = []
+        for line in lines:
+            if not line.strip().startswith('#@'):
+                filtered_lines.append(line)
+        
+        # Ensure paths use forward slashes for ImageJ
+        input_dir = str(input_dir).replace('\\', '/')
+        output_dir = str(output_dir).replace('\\', '/')
+        
+        # Add parameter definitions at the beginning
+        parameter_definitions = f"""
+// Parameters embedded from Python script
 input_dir = "{input_dir}";
 output_dir = "{output_dir}";
 channel = "{channel}";
+auto_close = {str(auto_close).lower()};
+"""
+        
+        # Combine parameters with the filtered template content
+        macro_content = parameter_definitions + '\n'.join(filtered_lines)
+        
+        # Create temporary macro file
+        temp_macro = tempfile.NamedTemporaryFile(mode='w', suffix='.ijm', delete=False)
+        temp_macro.write(macro_content)
+        temp_macro.close()
+        
+        logger.info(f"Created temporary macro file: {temp_macro.name}")
+        return temp_macro.name
+        
+    except Exception as e:
+        logger.error(f"Error creating macro with parameters: {e}")
+        return None
 
-print("Input directory: " + input_dir);
-print("Output directory: " + output_dir);
-print("Processing channel: " + channel);
-
-// Process all condition directories in input directory
-condition_dirs = getFileList(input_dir);
-num_processed = 0;
-
-for (c = 0; c < condition_dirs.length; c++) {{
-    condition_name = condition_dirs[c];
-
-    // Skip non-directories and hidden folders
-    if (!File.isDirectory(input_dir + "/" + condition_name) || indexOf(condition_name, ".") == 0) {{
-        continue;
-    }}
-
-    condition_path = input_dir + "/" + condition_name;
-    print("Processing condition: " + condition_name);
-
-    // Create corresponding output directory
-    output_condition_dir = output_dir + "/" + condition_name;
-    if (!File.exists(output_condition_dir)) {{
-        File.makeDirectory(output_condition_dir);
-    }}
-
-    // Get all subdirectories in the condition directory
-    subdirs = getFileList(condition_path);
-    
-    // Process each subdirectory
-    for (s = 0; s < subdirs.length; s++) {{
-        subdir = subdirs[s];
-        if (!File.isDirectory(condition_path + "/" + subdir) || indexOf(subdir, ".") == 0) {{
-            continue;
-        }}
-
-        // Full path to the subdirectory
-        subdir_path = condition_path + "/" + subdir;
-        print("Processing subdirectory: " + subdir_path);
-
-        // Get all ROI zip files in the subdirectory
-        subdir_files = getFileList(subdir_path);
-        for (i = 0; i < subdir_files.length; i++) {{
-            roi_file = subdir_files[i];
-            
-            // Process only files ending with _rois.zip and containing the specified channel
-            if (!endsWith(roi_file, "_rois.zip") || indexOf(roi_file, channel) == -1) {{
-                continue;
-            }}
-
-            // Find corresponding image file
-            base_name = substring(roi_file, 0, indexOf(roi_file, "_rois.zip"));
-            image_file = base_name + ".tif";
-            image_path = subdir_path + "/" + image_file;
-
-            if (!File.exists(image_path)) {{
-                print("Image file not found: " + image_path);
-                continue;
-            }}
-
-            roi_path = subdir_path + "/" + roi_file;
-            
-            // Create output ROI file name
-            // Remove 'bin4x4_' prefix if present
-            if (startsWith(base_name, "bin4x4_")) {{
-                new_base_name = substring(base_name, lengthOf("bin4x4_"), lengthOf(base_name));
-            }} else {{
-                new_base_name = base_name;
-            }}
-            
-            new_roi_file = "ROIs_" + new_base_name + "_rois.zip";
-            new_roi_path = output_condition_dir + "/" + new_roi_file;
-
-            print("Processing: " + base_name);
-            print("  ROI file: " + roi_path);
-            print("  Image file: " + image_path);
-            print("  Output ROI file: " + new_roi_path);
-
-            // ----- Process the Image and ROIs -----
-            print("  Opening image: " + image_path);
-            open(image_path);
-            image_title = getTitle();
-            
-            // No transformations needed - Cellpose invocation method fixed the orientation issue
-            print("  Image dimensions: " + getWidth() + " x " + getHeight());
-            
-            print("  Opening ROI file: " + roi_path);
-            // Initialize ROI Manager
-            roiManager("reset");
-            
-            // Open ROIs
-            roiManager("open", roi_path);
-
-            num_original_rois = roiManager("count");
-            print("  Found " + num_original_rois + " ROIs to process");
-
-            for (j = 0; j < num_original_rois; j++) {{
-                // Select the input image and ROI
-                selectWindow(image_title);
-                // Duplicate the image and create a mask
-                run("Duplicate...", "title=makeMask");
-                selectWindow("makeMask");
-                roiManager("Select", j);
-
-                // Create a mask from the ROI
-                run("Create Mask");
-                
-                // Resize the mask to match original image (4x larger since we binned 4x4)
-                orig_width = getWidth();
-                orig_height = getHeight();
-                new_width = orig_width * 4;
-                new_height = orig_height * 4;
-                run("Size...", "width=" + new_width + " height=" + new_height + " interpolation=None");
-
-                // Create a selection from the resized mask
-                run("Create Selection");
-                roiManager("Add");
-
-                // Close the duplicate and mask windows
-                close(); // Close mask
-                close(); // Close duplicate
-            }}
-
-            // Remove the original ROIs (they're at the beginning of the list)
-            for (j = 0; j < num_original_rois; j++) {{
-                roiManager("Select", 0);
-                roiManager("Delete");
-            }}
-
-            // Save the new ROIs
-            print("  Saving " + (roiManager("count")) + " resized ROIs to: " + new_roi_path);
-            roiManager("Save", new_roi_path);
-            
-            // Close the original binned image
-            selectWindow(image_title);
-            close();
-            
-            // Reset ROI Manager for next round
-            roiManager("reset");
-            
-            num_processed++;
-        }}
-    }}
-}}
-
-print("Completed processing " + num_processed + " ROI files");
-print("Resized ROIs saved to " + output_dir);
+def run_imagej_macro(imagej_path, macro_file, auto_close=False):
     """
-    
-    # Add auto-close line if requested
-    if auto_close:
-        macro_content += '\n// Close ImageJ when done\neval("script", "System.exit(0);");\n'
-    
-    # Write the macro content to the file
-    with open(macro_file, 'w') as f:
-        f.write(macro_content)
-    
-    logger.info(f"Created macro file: {macro_file}")
-    return str(macro_file)
-
-def run_imagej_macro(imagej_path, macro_file, auto_close=False, *args):
-    """
-    Run ImageJ with a given macro and arguments.
+    Run ImageJ with the dedicated macro using -macro mode.
     
     Args:
         imagej_path (str): Path to the ImageJ executable
-        macro_file (str): Path to the ImageJ macro file
+        macro_file (str): Path to the dedicated ImageJ macro file
         auto_close (bool): Whether the macro will automatically close ImageJ
-        *args: Additional arguments to pass to the macro
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        cmd = [imagej_path, '-macro', macro_file]
-        if args:
-            cmd.append(','.join(args))
+        # Use -macro instead of --headless --run to avoid ROI Manager headless issues
+        cmd = [imagej_path, '-macro', str(macro_file)]
         
-        logger.info(f"Running ImageJ command: {cmd}")
+        logger.info(f"Running ImageJ command: {' '.join(cmd)}")
         logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
         
         result = subprocess.run(
@@ -241,9 +109,14 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False, *args):
         
         # Log the output
         if result.stdout:
-            logger.info(f"ImageJ output: {result.stdout}")
+            logger.info("ImageJ output:")
+            for line in result.stdout.splitlines():
+                logger.info(f"  {line}")
+        
         if result.stderr:
-            logger.warning(f"ImageJ errors: {result.stderr}")
+            logger.warning("ImageJ errors:")
+            for line in result.stderr.splitlines():
+                logger.warning(f"  {line}")
         
         # Check if the command executed successfully
         if result.returncode != 0:
@@ -251,13 +124,89 @@ def run_imagej_macro(imagej_path, macro_file, auto_close=False, *args):
             return False
         
         return True
+        
     except Exception as e:
         logger.error(f"Error running ImageJ: {e}")
         return False
 
+def validate_inputs(input_dir, output_dir, channel):
+    """
+    Validate input parameters.
+    
+    Args:
+        input_dir (str): Input directory path
+        output_dir (str): Output directory path  
+        channel (str): Channel specification
+        
+    Returns:
+        bool: True if all inputs are valid, False otherwise
+    """
+    # Check input directory exists
+    if not os.path.exists(input_dir):
+        logger.error(f"Input directory does not exist: {input_dir}")
+        return False
+    
+    # Check input directory has content
+    if not os.listdir(input_dir):
+        logger.error(f"Input directory is empty: {input_dir}")
+        return False
+    
+    # Validate channel format
+    if not channel.startswith('ch'):
+        logger.error(f"Channel should start with 'ch' (e.g., 'ch00'): {channel}")
+        return False
+    
+    # Create output directory if it doesn't exist
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Output directory ready: {output_dir}")
+    except Exception as e:
+        logger.error(f"Cannot create output directory {output_dir}: {e}")
+        return False
+    
+    return True
+
+def check_macro_file(macro_file):
+    """
+    Check if the dedicated macro file exists and is readable.
+    
+    Args:
+        macro_file (str): Path to the macro file
+        
+    Returns:
+        bool: True if macro file is accessible, False otherwise
+    """
+    macro_path = Path(macro_file)
+    
+    if not macro_path.exists():
+        logger.error(f"Macro file does not exist: {macro_file}")
+        return False
+    
+    if not macro_path.is_file():
+        logger.error(f"Macro path is not a file: {macro_file}")
+        return False
+    
+    try:
+        with open(macro_path, 'r') as f:
+            content = f.read()
+            # Check if it contains the expected parameter declarations
+            if '#@ String input_dir' not in content:
+                logger.warning(f"Macro file may not be compatible - missing input_dir parameter")
+            if '#@ String output_dir' not in content:
+                logger.warning(f"Macro file may not be compatible - missing output_dir parameter")
+            if '#@ String channel' not in content:
+                logger.warning(f"Macro file may not be compatible - missing channel parameter")
+        
+        logger.info(f"Macro file validated: {macro_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Cannot read macro file {macro_file}: {e}")
+        return False
+
 def main():
     """Main function to resize ROIs."""
-    parser = argparse.ArgumentParser(description='Resize ROIs from binned images')
+    parser = argparse.ArgumentParser(description='Resize ROIs from binned images using dedicated macro')
     
     parser.add_argument('--input', '-i', required=True,
                         help='Input directory containing preprocessed images and ROIs')
@@ -267,26 +216,63 @@ def main():
                         help='Path to ImageJ executable')
     parser.add_argument('--channel', required=True,
                         help='Segmentation channel to process ROIs for (e.g., ch00)')
+    parser.add_argument('--macro', default='macros/resize_rois.ijm',
+                        help='Path to the dedicated ImageJ macro file (default: macros/resize_rois.ijm)')
     parser.add_argument('--auto-close', action='store_true',
                         help='Close ImageJ when the macro completes')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Enable verbose logging')
     
     args = parser.parse_args()
     
-    # Create output directory if it doesn't exist
-    os.makedirs(args.output, exist_ok=True)
+    # Set logging level
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Verbose logging enabled")
     
-    # Create the ImageJ macro
-    macro_file = create_macro_file(args.input, args.output, args.channel, args.auto_close)
-    
-    # Run the ImageJ macro
-    success = run_imagej_macro(args.imagej, macro_file, args.auto_close)
-    
-    if success:
-        logger.info("ROI resizing completed successfully")
-        return 0
-    else:
-        logger.error("ROI resizing failed")
+    # Validate inputs
+    if not validate_inputs(args.input, args.output, args.channel):
+        logger.error("Input validation failed")
         return 1
+    
+    # Check macro file
+    if not check_macro_file(args.macro):
+        logger.error("Macro file validation failed")
+        return 1
+    
+    # Create temporary macro with embedded parameters
+    logger.info("Creating macro with embedded parameters...")
+    temp_macro_file = create_macro_with_parameters(
+        args.macro,
+        args.input,
+        args.output, 
+        args.channel,
+        args.auto_close
+    )
+    
+    if not temp_macro_file:
+        logger.error("Failed to create macro with parameters")
+        return 1
+    
+    try:
+        # Run the ImageJ macro
+        logger.info("Starting ROI resizing process...")
+        success = run_imagej_macro(args.imagej, temp_macro_file, args.auto_close)
+        
+        if success:
+            logger.info("ROI resizing completed successfully")
+            return 0
+        else:
+            logger.error("ROI resizing failed")
+            return 1
+    
+    finally:
+        # Clean up temporary macro file
+        try:
+            os.unlink(temp_macro_file)
+            logger.debug(f"Cleaned up temporary macro file: {temp_macro_file}")
+        except Exception as e:
+            logger.warning(f"Could not clean up temporary macro file {temp_macro_file}: {e}")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main()) 

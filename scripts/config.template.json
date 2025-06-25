@@ -103,9 +103,11 @@
         "{output_dir}/ROIs",
         "--imagej",
         "{imagej_path}",
-        "--auto-close",
         "--channel",
-        "{segmentation_channel}"
+        "{segmentation_channel}",
+        "--macro",
+        "macros/resize_rois.ijm",
+        "--auto-close"
       ],
       "description": "Resize ROIs from binned images to match original image dimensions (uses segmentation channel as reference)"
     },
