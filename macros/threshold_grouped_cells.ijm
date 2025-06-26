@@ -11,9 +11,9 @@ function joinArray(arr, separator) {
 }
 
 // ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_masks/";
-flagFile = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/grouped_masks/NEED_MORE_BINS.flag";
+cellsDir = "/Volumes/NX-01-A/2025-06-24_test/grouped_cells/";
+outputDir = "/Volumes/NX-01-A/2025-06-24_test/grouped_masks/";
+flagFile = "/Volumes/NX-01-A/2025-06-24_test/grouped_masks/NEED_MORE_BINS.flag";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);

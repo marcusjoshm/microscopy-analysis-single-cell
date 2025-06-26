@@ -2,9 +2,9 @@
 // Creates individual cell masks by applying ROIs to a combined mask image
 
 // Input parameters
-roiFile = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/ROIs/U2OS_TAOK2-WT_transfection_washout/ROIs_R_3_Merged_Processed001_ch00_t00_rois.zip";
-maskFile = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/combined_masks/U2OS_TAOK2-WT_transfection_washout/MASK_R_3_Merged_Processed001_ch00_t00.tif";
-outputDir = "/Volumes/NX-01-A/2025-06-18_analysis_U2OS_transfection_washout_TAOK2-WT/masks/U2OS_TAOK2-WT_transfection_washout/R_3_Merged_Processed001_ch00_t00";
+roiFile = "/Volumes/NX-01-A/2025-06-24_test/ROIs/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/ROIs_R_1_Merged_Processed001_ch00_t00_rois.zip";
+maskFile = "/Volumes/NX-01-A/2025-06-24_test/combined_masks/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/MASK_R_1_Merged_Processed001_ch00_t00.tif";
+outputDir = "/Volumes/NX-01-A/2025-06-24_test/masks/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/R_1_Merged_Processed001_ch00_t00";
 
 // Print parameters for debugging
 print("ROI file: " + roiFile);

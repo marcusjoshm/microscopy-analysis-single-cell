@@ -137,6 +137,8 @@
         "{output_dir}/cells",
         "--imagej",
         "{imagej_path}",
+        "--macro",
+        "macros/extract_cells.ijm",
         "--auto-close"
       ],
       "description": "Extract individual cells using ROIs and save as separate files for each analysis channel"

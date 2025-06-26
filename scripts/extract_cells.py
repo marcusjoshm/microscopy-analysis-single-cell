@@ -6,6 +6,9 @@ Extract Individual Cells Script for Single Cell Analysis Workflow
 
 This script uses ROIs to extract individual cells from the original images
 and saves them as separate files in the cells directory.
+
+This version uses a dedicated macro file with parameter passing instead of 
+creating permanent temporary macro files.
 """
 
 import os
@@ -26,186 +29,146 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CellExtractor")
 
-def create_imagej_macro(roi_file, image_file, output_dir, headless=False, auto_close=False):
+def create_macro_with_parameters(macro_template_file, roi_file, image_file, output_dir, auto_close=False):
     """
-    Create an ImageJ macro to extract cells from an image file using ROIs.
+    Create a temporary macro file with parameters embedded from the dedicated macro template.
     
     Args:
-        roi_file: Path to the ROI file
-        image_file: Path to the raw image file
-        output_dir: Directory to save extracted cell images
-        headless: Whether to run in headless mode
-        auto_close: Whether to close ImageJ when done
+        macro_template_file (str): Path to the dedicated macro template file
+        roi_file (str): Path to the ROI file
+        image_file (str): Path to the raw image file
+        output_dir (str): Directory to save extracted cell images
+        auto_close (bool): Whether to add auto-close functionality
         
     Returns:
-        Path to the generated macro file
+        str: Path to the created temporary macro file
     """
-    # Ensure paths use forward slashes for ImageJ
-    roi_file_path = str(roi_file).replace('\\', '/')
-    image_file_path = str(image_file).replace('\\', '/')
-    output_dir_path = str(output_dir).replace('\\', '/')
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Create a temporary macro file
-    macro_file = "macros/temp_extract_cells.ijm"
-    os.makedirs(os.path.dirname(macro_file), exist_ok=True)
-    
-    # Create the macro content
-    macro_content = f"""// Cell Extraction Macro
-// Extracts individual cells from an image file using ROIs
-
-// Input parameters
-roiFile = "{roi_file_path}";
-imageFile = "{image_file_path}";
-outputDir = "{output_dir_path}";
-
-// Print parameters for debugging
-print("ROI file: " + roiFile);
-print("Image file: " + imageFile);
-print("Output directory: " + outputDir);
-
-// Create output directory if it doesn't exist
-File.makeDirectory(outputDir);
-
-// Reset ROI Manager
-roiManager("reset");
-
-// Open ROIs
-print("Opening ROI file");
-roiManager("Open", roiFile);
-roi_count = roiManager("count");
-print("Found " + roi_count + " ROIs");
-
-if (roi_count == 0) {{
-    print("No ROIs found in file: " + roiFile);
-    exit("No ROIs found");
-}}
-
-// Open the image
-print("Opening image file");
-open(imageFile);
-if (nImages == 0) {{
-    print("Failed to open image: " + imageFile);
-    exit("Failed to open image");
-}}
-
-// Get the title of the open image
-regionTitle = getTitle();
-print("Image opened: " + regionTitle);
-
-// Set batch mode for faster processing
-setBatchMode(true);
-
-// Process each ROI
-for (i = 0; i < roi_count; i++) {{
-    // Duplicate the region image so the original remains unaltered.
-    selectWindow(regionTitle);
-    run("Duplicate...", "title=TempRegion duplicate");
-    
-    // Apply the ROI (from the ROI Manager) to the duplicate.
-    roiManager("select", i);
-    nslices = nSlices();
-    for (s = 1; s <= nslices; s++) {{
-        setSlice(s);
-        run("Clear Outside");
-    }}
-    
-    // Save the cell
-    cell_num = i + 1;
-    cell_path = outputDir + "/CELL" + cell_num + ".tif";
-    print("Saving cell " + cell_num + " to: " + cell_path);
-    saveAs("Tiff", cell_path);
-    
-    // Close the duplicate
-    close();
-}}
-
-// Close the original image
-selectWindow(regionTitle);
-close();
-
-// Clear ROI Manager
-roiManager("reset");
-
-// Turn off batch mode
-setBatchMode(false);
-
-print("Cell extraction completed for " + roi_count + " cells");
-
-// Auto-close if requested
-"""
-    
-    # Add auto-close command if requested
-    if auto_close:
-        if headless:
-            macro_content += """
-// Exit ImageJ
-run("Quit");
-"""
-        else:
-            macro_content += """
-// Exit ImageJ
-eval("script", "System.exit(0);");
-"""
-    
-    # Write the macro to file
-    with open(macro_file, 'w') as f:
-        f.write(macro_content)
-    
-    logger.info(f"Created macro file: {macro_file}")
-    return macro_file
-
-def run_imagej_macro(imagej_path, macro_path, headless=False):
-    """
-    Run an ImageJ macro.
-    
-    Args:
-        imagej_path: Path to the ImageJ executable
-        macro_path: Path to the macro file
-        headless: Whether to run in headless mode
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    # Build the command
-    cmd = [imagej_path]
-    
-    if headless:
-        cmd.extend(['-batch', macro_path])
-    else:
-        cmd.extend(['-macro', macro_path])
-    
-    logger.info(f"Running ImageJ command: {cmd}")
-    
-    # Run the command
     try:
-        process = subprocess.run(
+        # Read the dedicated macro template
+        with open(macro_template_file, 'r') as f:
+            template_content = f.read()
+        
+        # Remove the #@ parameter declarations since we're embedding the values
+        lines = template_content.split('\n')
+        filtered_lines = []
+        for line in lines:
+            if not line.strip().startswith('#@'):
+                filtered_lines.append(line)
+        
+        # Ensure paths use forward slashes for ImageJ
+        roi_file_path = str(roi_file).replace('\\', '/')
+        image_file_path = str(image_file).replace('\\', '/')
+        output_dir_path = str(output_dir).replace('\\', '/')
+        
+        # Add parameter definitions at the beginning
+        parameter_definitions = f"""
+// Parameters embedded from Python script
+roi_file = "{roi_file_path}";
+image_file = "{image_file_path}";
+output_dir = "{output_dir_path}";
+auto_close = {str(auto_close).lower()};
+"""
+        
+        # Combine parameters with the filtered template content
+        macro_content = parameter_definitions + '\n'.join(filtered_lines)
+        
+        # Create temporary macro file
+        temp_macro = tempfile.NamedTemporaryFile(mode='w', suffix='.ijm', delete=False)
+        temp_macro.write(macro_content)
+        temp_macro.close()
+        
+        logger.info(f"Created temporary macro file: {temp_macro.name}")
+        return temp_macro.name
+        
+    except Exception as e:
+        logger.error(f"Error creating macro with parameters: {e}")
+        return None
+
+def run_imagej_macro(imagej_path, macro_file, auto_close=False):
+    """
+    Run ImageJ with the dedicated macro using -macro mode.
+    
+    Args:
+        imagej_path (str): Path to the ImageJ executable
+        macro_file (str): Path to the dedicated ImageJ macro file
+        auto_close (bool): Whether the macro will automatically close ImageJ
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Use -macro instead of --headless --run to avoid ROI Manager headless issues
+        cmd = [imagej_path, '-macro', str(macro_file)]
+        
+        logger.info(f"Running ImageJ command: {' '.join(cmd)}")
+        logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
+        
+        result = subprocess.run(
             cmd,
-            check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            check=False  # Don't raise an exception on non-zero return code
         )
         
-        # Log output
-        if process.stdout:
-            for line in process.stdout.splitlines():
-                logger.info(f"ImageJ output: {line}")
+        # Log the output
+        if result.stdout:
+            logger.info("ImageJ output:")
+            for line in result.stdout.splitlines():
+                logger.info(f"  {line}")
         
-        if process.stderr:
-            for line in process.stderr.splitlines():
-                logger.warning(f"ImageJ error: {line}")
+        if result.stderr:
+            logger.warning("ImageJ errors:")
+            for line in result.stderr.splitlines():
+                logger.warning(f"  {line}")
         
-        # Check if cells were created even if ImageJ reported an error
-        # Sometimes ImageJ returns error codes but still processes the cells
-        time.sleep(1)  # Small delay to ensure files are written
+        # Check if the command executed successfully
+        if result.returncode != 0:
+            logger.error(f"ImageJ returned non-zero exit code: {result.returncode}")
+            return False
         
         return True
-    
+        
     except Exception as e:
         logger.error(f"Error running ImageJ: {e}")
+        return False
+
+def check_macro_file(macro_file):
+    """
+    Check if the dedicated macro file exists and is readable.
+    
+    Args:
+        macro_file (str): Path to the macro file
+        
+    Returns:
+        bool: True if macro file is accessible, False otherwise
+    """
+    macro_path = Path(macro_file)
+    
+    if not macro_path.exists():
+        logger.error(f"Macro file does not exist: {macro_file}")
+        return False
+    
+    if not macro_path.is_file():
+        logger.error(f"Macro path is not a file: {macro_file}")
+        return False
+    
+    try:
+        with open(macro_path, 'r') as f:
+            content = f.read()
+            # Check if it contains the expected parameter declarations
+            if '#@ String roi_file' not in content:
+                logger.warning(f"Macro file may not be compatible - missing roi_file parameter")
+            if '#@ String image_file' not in content:
+                logger.warning(f"Macro file may not be compatible - missing image_file parameter")
+            if '#@ String output_dir' not in content:
+                logger.warning(f"Macro file may not be compatible - missing output_dir parameter")
+        
+        logger.info(f"Macro file validated: {macro_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Cannot read macro file {macro_file}: {e}")
         return False
 
 def find_image_for_roi(roi_file, raw_data_dir):
@@ -362,7 +325,7 @@ def create_output_dir_for_roi(roi_file, output_base_dir):
 
 def main():
     """Main function to extract individual cells."""
-    parser = argparse.ArgumentParser(description='Extract individual cells using ROIs')
+    parser = argparse.ArgumentParser(description='Extract individual cells using ROIs with dedicated macro')
     
     parser.add_argument('--roi-dir', '-i', required=True,
                         help='Directory containing ROI files')
@@ -372,6 +335,8 @@ def main():
                         help='Directory where individual cells will be saved')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--macro', default='macros/extract_cells.ijm',
+                        help='Path to the dedicated ImageJ macro file (default: macros/extract_cells.ijm)')
     parser.add_argument('--regions', '-r', nargs='+',
                         help='List of regions to process')
     parser.add_argument('--timepoints', '-t', nargs='+',
@@ -382,8 +347,6 @@ def main():
                         help='Close ImageJ when the macro completes')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Enable more verbose logging')
-    parser.add_argument('--headless', action='store_true',
-                        help='Run ImageJ in headless mode')
     parser.add_argument('--channels', nargs='+', help='Channels to process')
     
     args = parser.parse_args()
@@ -395,6 +358,11 @@ def main():
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Check macro file
+    if not check_macro_file(args.macro):
+        logger.error("Macro file validation failed")
+        return 1
     
     # Find all ROI files in the ROI directory
     roi_dir = Path(args.roi_dir)
@@ -476,29 +444,44 @@ def main():
             # Create output directory for this ROI
             cell_output_dir = create_output_dir_for_roi(roi_file, args.output_dir)
             
-            # Create and run the ImageJ macro
-            macro_file = create_imagej_macro(
+            # Create temporary macro with embedded parameters
+            logger.info("Creating macro with embedded parameters...")
+            temp_macro_file = create_macro_with_parameters(
+                args.macro,
                 roi_file,
                 image_file,
                 cell_output_dir,
-                headless=args.headless,
-                auto_close=args.auto_close
+                args.auto_close
             )
             
-            success = run_imagej_macro(
-                args.imagej,
-                macro_file,
-                headless=args.headless
-            )
+            if not temp_macro_file:
+                logger.error("Failed to create macro with parameters")
+                continue
             
-            # Check if cells were actually extracted
-            cell_files = list(cell_output_dir.glob("CELL*.tif"))
-            if cell_files:
-                logger.info(f"Successfully extracted {len(cell_files)} cells to {cell_output_dir}")
-                successful_extractions += 1
-                total_cells_extracted += len(cell_files)
-            else:
-                logger.warning(f"No cell files were created in {cell_output_dir}")
+            try:
+                # Run the ImageJ macro
+                logger.info("Starting cell extraction process...")
+                success = run_imagej_macro(args.imagej, temp_macro_file, args.auto_close)
+                
+                if success:
+                    # Check if cells were actually extracted
+                    cell_files = list(cell_output_dir.glob("CELL*.tif"))
+                    if cell_files:
+                        logger.info(f"Successfully extracted {len(cell_files)} cells to {cell_output_dir}")
+                        successful_extractions += 1
+                        total_cells_extracted += len(cell_files)
+                    else:
+                        logger.warning(f"No cell files were created in {cell_output_dir}")
+                else:
+                    logger.error("Cell extraction failed")
+            
+            finally:
+                # Clean up temporary macro file
+                try:
+                    os.unlink(temp_macro_file)
+                    logger.debug(f"Cleaned up temporary macro file: {temp_macro_file}")
+                except Exception as e:
+                    logger.warning(f"Could not clean up temporary macro file {temp_macro_file}: {e}")
         else:
             logger.error(f"Could not find matching image file for {roi_file}")
     
