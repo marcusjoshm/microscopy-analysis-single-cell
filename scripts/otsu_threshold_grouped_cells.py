@@ -6,6 +6,9 @@ Threshold Grouped Cells Script for Single Cell Analysis Workflow
 
 This script takes the grouped cell images, applies thresholding to create masks,
 and saves them to the grouped masks directory.
+
+This version uses a dedicated macro file with parameter passing instead of 
+creating permanent macro files with hardcoded paths.
 """
 
 import os
@@ -23,35 +26,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GroupedThresholder")
 
-def create_macro_file(input_dir, output_dir, channels=None, auto_close=False):
+def create_channel_filter_logic(channels):
     """
-    Create an ImageJ macro file for thresholding grouped cell images.
+    Create the channel filtering logic for the ImageJ macro.
     
     Args:
-        input_dir (str): Directory containing grouped cell images
-        output_dir (str): Directory to save thresholded mask images
         channels (list): List of channels to process (e.g., ['ch00', 'ch02'])
-        auto_close (bool): Whether to add a line to close ImageJ when the macro completes
         
     Returns:
-        str: Path to the created macro file
+        str: ImageJ macro code for channel filtering
     """
-    # Create a macro file
-    macro_file = Path("macros/threshold_grouped_cells.ijm")
+    if not channels:
+        return ""  # No filtering, process all channels
     
-    # Ensure the directory exists
-    macro_file.parent.mkdir(parents=True, exist_ok=True)
+    # Create channel filter conditions
+    channel_conditions = []
+    for channel in channels:
+        channel_conditions.append(f'indexOf(regionName, "{channel}") >= 0')
     
-    # Define the flag file path that will be created if user requests more bins
-    flag_file = Path(output_dir) / "NEED_MORE_BINS.flag"
-    
-    # Create channel filter condition
-    channel_filter = ""
-    if channels:
-        channel_conditions = []
-        for channel in channels:
-            channel_conditions.append(f'indexOf(regionName, "{channel}") >= 0')
-        channel_filter = f"""
+    channel_filter_code = f"""
         // Check if this region directory matches any of the specified channels
         channelMatch = false;
         if ({' || '.join(channel_conditions)}) {{
@@ -62,212 +55,80 @@ def create_macro_file(input_dir, output_dir, channels=None, auto_close=False):
         }}
         """
     
-    # Generate the macro content adapted for merged bin images
-    macro_content = f"""
-// Helper function to join array elements with a separator.
-function joinArray(arr, separator) {{
-    s = "";
-    for (i = 0; i < arr.length; i++) {{
-        s += arr[i];
-        if (i < arr.length - 1)
-            s += separator;
-    }}
-    return s;
-}}
+    return channel_filter_code
 
-// ----- CONFIGURATION -----
-cellsDir = "{input_dir}/";
-outputDir = "{output_dir}/";
-flagFile = "{flag_file}";
-needMoreBinsFlag = false;
-
-print("cellsDir: " + cellsDir);
-
-// Ensure trailing slashes for path concatenation
-if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
-if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
-
-// Get list of condition directories in cellsDir.
-conditionDirs = getFileList(cellsDir);
-print("Found condition directories: " + joinArray(conditionDirs, ", "));
-
-// Skip initial image preview - proceed directly to thresholding
-// Start processing each image directly
-print("Proceeding directly to thresholding without preview.");
-
-// Process each condition directory
-for (d = 0; d < conditionDirs.length; d++) {{
-    conditionName = conditionDirs[d];
+def create_macro_with_parameters(macro_template_file, input_dir, output_dir, channels=None, auto_close=False):
+    """
+    Create a temporary macro file with parameters embedded from the dedicated macro template.
     
-    // Skip non-directories and hidden files
-    if (!File.isDirectory(cellsDir + conditionName) || startsWith(conditionName, ".")) {{
-        continue;
-    }}
-    
-    conditionPath = cellsDir + conditionName;
-    // Ensure trailing slash
-    if (!endsWith(conditionPath, "/")) conditionPath = conditionPath + "/";
-    
-    print("Processing condition: " + conditionPath);
-    
-    // Get list of region/channel/timepoint subdirectories within the condition folder
-    regionDirs = getFileList(conditionPath);
-    if (regionDirs.length == 0) {{
-        print("No subdirectories found in " + conditionName);
-        continue;
-    }}
-    
-    print("Found region subdirectories in " + conditionName + ": " + joinArray(regionDirs, ", "));
-    
-    for (t = 0; t < regionDirs.length; t++) {{
-        regionName = regionDirs[t];
+    Args:
+        macro_template_file (str): Path to the dedicated macro template file
+        input_dir (str): Directory containing grouped cell images
+        output_dir (str): Directory to save thresholded mask images
+        channels (list): List of channels to process
+        auto_close (bool): Whether to add auto-close functionality
         
-        // Skip non-directories and hidden files
-        if (!File.isDirectory(conditionPath + regionName) || startsWith(regionName, ".")) {{
-            continue;
-        }}
+    Returns:
+        tuple: (str, str) - (temp_macro_file_path, flag_file_path)
+    """
+    try:
+        # Read the dedicated macro template
+        with open(macro_template_file, 'r') as f:
+            template_content = f.read()
         
-        {channel_filter}
+        # Remove the #@ parameter declarations since we're embedding the values
+        lines = template_content.split('\n')
+        filtered_lines = []
+        for line in lines:
+            if not line.strip().startswith('#@'):
+                filtered_lines.append(line)
         
-        regionPath = conditionPath + regionName;
-        // Ensure trailing slash
-        if (!endsWith(regionPath, "/")) regionPath = regionPath + "/";
+        # Ensure paths use forward slashes for ImageJ
+        input_dir_path = str(input_dir).replace('\\', '/')
+        output_dir_path = str(output_dir).replace('\\', '/')
         
-        print("Processing region folder: " + regionPath);
+        # Define the flag file path
+        flag_file_path = Path(output_dir) / "NEED_MORE_BINS.flag"
+        flag_file_path_str = str(flag_file_path).replace('\\', '/')
         
-        // Get list of files in the region folder
-        files = getFileList(regionPath);
-        if (files.length == 0) {{
-            print("No files found in " + regionName);
-            continue;
-        }}
+        # Create channel filtering logic
+        channel_filter_logic = create_channel_filter_logic(channels)
         
-        print("Found files in " + regionName + ": " + joinArray(files, ", "));
-        
-        for (f = 0; f < files.length; f++) {{
-            fileName = files[f];
-            
-            // Process only bin TIFF files (skip CSV and txt files)
-            if (endsWith(fileName, ".tif") && indexOf(fileName, "_bin_") >= 0) {{
-                imagePath = regionPath + fileName;
-                print("Opening file: " + imagePath);
-                
-                // Open the image
-                open(imagePath);
-                
-                // Image processing steps
-                run("Enhance Contrast...", "saturated=0.01");
-                run("Gaussian Blur...", "sigma=1.70");
-                imageTitle = getTitle();
-                selectWindow(imageTitle);
-                
-                // Set the oval selection tool
-                setTool("oval");
-                
-                // Wait for the user to draw an ROI for thresholding
-                waitForUser("Draw ROI for thresholding", "Please draw an oval ROI in a representative area for thresholding, then click OK.");
-                
-                // Check if user drew an ROI
-                if (selectionType() == -1) {{
-                    // No selection was made, prompt again
-                    waitForUser("No ROI detected", "Please draw an oval ROI to select an area for thresholding, then click OK.");
-                    
-                    // If still no selection, use the entire image
-                    if (selectionType() == -1) {{
-                        print("No ROI drawn, using the entire image for thresholding.");
-                        run("Select All");
-                    }}
-                }}
-                
-                // After ROI selection but before thresholding, ask if more bins are needed
-                Dialog.create("Evaluate Cell Grouping");
-                Dialog.addMessage("Based on what you see in this image, do you want to:");
-                Dialog.addChoice("Decision:", newArray(
-                    "Continue with thresholding", 
-                    "Go back and add one more group",
-                    "Ignore thresholding for this group. There are no structures to threshold in the field"
-                ));
-                Dialog.show();
-                
-                userBinsDecision = Dialog.getChoice();
-                
-                // If user wants more bins, create flag file and exit
-                if (userBinsDecision == "Go back and add one more group") {{
-                    File.saveString("User requested more bins for better cell grouping", flagFile);
-                    showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
-                    run("Close All");
-                    eval("script", "System.exit(0);");
-                }}
-                
-                // Handle case when there are no structures to threshold
-                if (userBinsDecision == "Ignore thresholding for this group. There are no structures to threshold in the field") {{
-                    print("User indicated no structures to threshold - creating empty mask");
-                    
-                    // Create a completely black mask (all pixels = 0)
-                    run("Select All");
-                    run("Clear", "slice");
-                    
-                    // Make sure we have a binary image with all black pixels
-                    setOption("BlackBackground", true);
-                    // Skip Convert to Mask which would turn it to 255 values
-                    // Instead manually set as 8-bit binary image with all zeros
-                    run("8-bit");
-                    setMinAndMax(0, 0);
-                    run("Apply LUT", "slice");
-                }} else {{
-                    // Apply Otsu thresholding directly for normal case
-                    setAutoThreshold("Otsu dark 16-bit");
-                    
-                    // Convert to mask
-                    setOption("BlackBackground", true);
-                    run("Convert to Mask");
-                }}
-                
-                // Create matching output directory structure
-                outFolder = outputDir + conditionName + "/" + regionName + "/";
-                if (!File.exists(outFolder)) {{
-                    File.makeDirectory(outFolder);
-                    print("Created output directory: " + outFolder);
-                }}
-                
-                // Save the processed image with "MASK_" prepended
-                outputPath = outFolder + "MASK_" + fileName;
-                saveAs("Tiff", outputPath);
-                print("Saved: " + outputPath);
-                
-                // Close the image
-                close();
-            }}
-        }}
-    }}
-}}
-
-print("Thresholding of grouped cells completed.");
+        # Add parameter definitions at the beginning
+        parameter_definitions = f"""
+// Parameters embedded from Python script
+input_dir = "{input_dir_path}";
+output_dir = "{output_dir_path}";
+flag_file = "{flag_file_path_str}";
+channel_filter_logic = ""; // Not used in this approach
+auto_close = {str(auto_close).lower()};
 """
-    
-    # Add auto-close line if requested
-    if auto_close:
-        macro_content += '\n// Close ImageJ when done\neval("script", "System.exit(0);");\n'
-    
-    # Write the macro content to the file
-    with open(macro_file, 'w') as f:
-        f.write(macro_content)
-    
-    logger.info(f"Created macro file: {macro_file}")
-    if channels:
-        logger.info(f"Configured to process channels: {channels}")
-    else:
-        logger.info("Configured to process all channels")
-    
-    return str(macro_file), str(flag_file)
+        
+        # Combine parameters with the filtered template content
+        macro_content = parameter_definitions + '\n'.join(filtered_lines)
+        
+        # Replace the channel filter placeholder with the actual logic
+        macro_content = macro_content.replace('        // CHANNEL_FILTER_PLACEHOLDER', channel_filter_logic)
+        
+        # Create temporary macro file
+        temp_macro = tempfile.NamedTemporaryFile(mode='w', suffix='.ijm', delete=False)
+        temp_macro.write(macro_content)
+        temp_macro.close()
+        
+        logger.info(f"Created temporary macro file: {temp_macro.name}")
+        return temp_macro.name, str(flag_file_path)
+        
+    except Exception as e:
+        logger.error(f"Error creating macro with parameters: {e}")
+        return None, None
 
 def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
     """
-    Run ImageJ with a given macro file.
+    Run ImageJ with the dedicated macro using -macro mode.
     
     Args:
         imagej_path (str): Path to the ImageJ executable
-        macro_file (str): Path to the ImageJ macro file
+        macro_file (str): Path to the dedicated ImageJ macro file
         flag_file (str): Path to the flag file that indicates need for more bins
         auto_close (bool): Whether the macro will automatically close ImageJ
         
@@ -275,9 +136,10 @@ def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
         tuple: (bool, bool) - (success, needs_more_bins)
     """
     try:
-        cmd = [imagej_path, '-macro', macro_file]
+        # Use -macro mode for user interaction
+        cmd = [imagej_path, '-macro', str(macro_file)]
         
-        logger.info(f"Running ImageJ command: {cmd}")
+        logger.info(f"Running ImageJ command: {' '.join(cmd)}")
         logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
         
         result = subprocess.run(
@@ -290,9 +152,14 @@ def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
         
         # Log the output
         if result.stdout:
-            logger.info(f"ImageJ output: {result.stdout}")
+            logger.info("ImageJ output:")
+            for line in result.stdout.splitlines():
+                logger.info(f"  {line}")
+        
         if result.stderr:
-            logger.warning(f"ImageJ errors: {result.stderr}")
+            logger.warning("ImageJ errors:")
+            for line in result.stderr.splitlines():
+                logger.warning(f"  {line}")
         
         # Check for the flag file
         needs_more_bins = os.path.exists(flag_file)
@@ -312,13 +179,52 @@ def run_imagej_macro(imagej_path, macro_file, flag_file, auto_close=False):
             return False, needs_more_bins
         
         return True, needs_more_bins
+        
     except Exception as e:
         logger.error(f"Error running ImageJ: {e}")
         return False, False
 
+def check_macro_file(macro_file):
+    """
+    Check if the dedicated macro file exists and is readable.
+    
+    Args:
+        macro_file (str): Path to the macro file
+        
+    Returns:
+        bool: True if macro file is accessible, False otherwise
+    """
+    macro_path = Path(macro_file)
+    
+    if not macro_path.exists():
+        logger.error(f"Macro file does not exist: {macro_file}")
+        return False
+    
+    if not macro_path.is_file():
+        logger.error(f"Macro path is not a file: {macro_file}")
+        return False
+    
+    try:
+        with open(macro_path, 'r') as f:
+            content = f.read()
+            # Check if it contains the expected parameter declarations
+            if '#@ String input_dir' not in content:
+                logger.warning(f"Macro file may not be compatible - missing input_dir parameter")
+            if '#@ String output_dir' not in content:
+                logger.warning(f"Macro file may not be compatible - missing output_dir parameter")
+            if '#@ String flag_file' not in content:
+                logger.warning(f"Macro file may not be compatible - missing flag_file parameter")
+        
+        logger.info(f"Macro file validated: {macro_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Cannot read macro file {macro_file}: {e}")
+        return False
+
 def main():
     """Main function to threshold grouped cell images."""
-    parser = argparse.ArgumentParser(description='Threshold grouped cell images using ImageJ')
+    parser = argparse.ArgumentParser(description='Threshold grouped cell images using ImageJ with dedicated macro')
     
     parser.add_argument('--input-dir', '-i', required=True,
                         help='Directory containing grouped cell images')
@@ -326,6 +232,8 @@ def main():
                         help='Directory to save thresholded mask images')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--macro', default='macros/threshold_grouped_cells.ijm',
+                        help='Path to the dedicated ImageJ macro file (default: macros/threshold_grouped_cells.ijm)')
     parser.add_argument('--auto-close', action='store_true',
                         help='Close ImageJ when the macro completes')
     parser.add_argument('--channels', nargs='+', help='Channels to process (e.g., ch00 ch02)')
@@ -347,25 +255,51 @@ def main():
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Create the ImageJ macro
-    macro_file, flag_file = create_macro_file(args.input_dir, args.output_dir, channels, args.auto_close)
-    
-    # Run the ImageJ macro
-    success, needs_more_bins = run_imagej_macro(args.imagej, macro_file, flag_file, args.auto_close)
-    
-    if success:
-        logger.info("Thresholding of grouped cells completed successfully")
-        
-        # If the user requested more bins, signal this to the workflow
-        if needs_more_bins:
-            logger.info("User requested more bins for better cell grouping")
-            # Exit with a special code (5) to signal the workflow that more bins are needed
-            return 5
-        
-        return 0
-    else:
-        logger.error("Thresholding of grouped cells failed")
+    # Check macro file
+    if not check_macro_file(args.macro):
+        logger.error("Macro file validation failed")
         return 1
+    
+    # Create temporary macro with embedded parameters
+    logger.info("Creating macro with embedded parameters...")
+    temp_macro_file, flag_file = create_macro_with_parameters(
+        args.macro,
+        args.input_dir,
+        args.output_dir,
+        channels,
+        args.auto_close
+    )
+    
+    if not temp_macro_file:
+        logger.error("Failed to create macro with parameters")
+        return 1
+    
+    try:
+        # Run the ImageJ macro
+        logger.info("Starting thresholding process...")
+        success, needs_more_bins = run_imagej_macro(args.imagej, temp_macro_file, flag_file, args.auto_close)
+        
+        if success:
+            logger.info("Thresholding of grouped cells completed successfully")
+            
+            # If the user requested more bins, signal this to the workflow
+            if needs_more_bins:
+                logger.info("User requested more bins for better cell grouping")
+                # Exit with a special code (5) to signal the workflow that more bins are needed
+                return 5
+            
+            return 0
+        else:
+            logger.error("Thresholding of grouped cells failed")
+            return 1
+    
+    finally:
+        # Clean up temporary macro file
+        try:
+            os.unlink(temp_macro_file)
+            logger.debug(f"Cleaned up temporary macro file: {temp_macro_file}")
+        except Exception as e:
+            logger.warning(f"Could not clean up temporary macro file {temp_macro_file}: {e}")
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main()) 

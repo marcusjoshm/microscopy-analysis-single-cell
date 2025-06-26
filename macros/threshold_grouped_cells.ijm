@@ -1,5 +1,34 @@
+// Threshold Grouped Cells Macro for Single Cell Analysis Workflow
+// This macro thresholds grouped cell images to create masks
+// Parameters are passed from the Python script
 
-// Helper function to join array elements with a separator.
+#@ String input_dir
+#@ String output_dir
+#@ String flag_file
+#@ String channel_filter_logic
+#@ Boolean auto_close
+
+// Enable batch mode for better performance
+setBatchMode(false); // Keep this false for user interaction
+
+// Validate input parameters
+if (input_dir == "") {
+    exit("Error: Input directory not specified");
+}
+if (output_dir == "") {
+    exit("Error: Output directory not specified");
+}
+if (flag_file == "") {
+    exit("Error: Flag file path not specified");
+}
+
+print("=== Threshold Grouped Cells Macro Started ===");
+print("Input directory: " + input_dir);
+print("Output directory: " + output_dir);
+print("Flag file: " + flag_file);
+print("Auto close: " + auto_close);
+
+// Helper function to join array elements with a separator
 function joinArray(arr, separator) {
     s = "";
     for (i = 0; i < arr.length; i++) {
@@ -10,10 +39,9 @@ function joinArray(arr, separator) {
     return s;
 }
 
-// ----- CONFIGURATION -----
-cellsDir = "/Volumes/NX-01-A/2025-06-24_test/grouped_cells/";
-outputDir = "/Volumes/NX-01-A/2025-06-24_test/grouped_masks/";
-flagFile = "/Volumes/NX-01-A/2025-06-24_test/grouped_masks/NEED_MORE_BINS.flag";
+// Configuration from parameters
+cellsDir = input_dir + "/";
+outputDir = output_dir + "/";
 needMoreBinsFlag = false;
 
 print("cellsDir: " + cellsDir);
@@ -22,12 +50,11 @@ print("cellsDir: " + cellsDir);
 if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
 if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 
-// Get list of condition directories in cellsDir.
+// Get list of condition directories in cellsDir
 conditionDirs = getFileList(cellsDir);
 print("Found condition directories: " + joinArray(conditionDirs, ", "));
 
 // Skip initial image preview - proceed directly to thresholding
-// Start processing each image directly
 print("Proceeding directly to thresholding without preview.");
 
 // Process each condition directory
@@ -62,16 +89,8 @@ for (d = 0; d < conditionDirs.length; d++) {
             continue;
         }
         
-        
-        // Check if this region directory matches any of the specified channels
-        channelMatch = false;
-        if (indexOf(regionName, "ch00") >= 0) {
-            channelMatch = true;
-        }
-        if (!channelMatch) {
-            continue; // Skip this directory if it doesn't match specified channels
-        }
-        
+        // Channel filtering logic will be embedded here by Python script
+        // CHANNEL_FILTER_PLACEHOLDER
         
         regionPath = conditionPath + regionName;
         // Ensure trailing slash
@@ -137,7 +156,7 @@ for (d = 0; d < conditionDirs.length; d++) {
                 
                 // If user wants more bins, create flag file and exit
                 if (userBinsDecision == "Go back and add one more group") {
-                    File.saveString("User requested more bins for better cell grouping", flagFile);
+                    File.saveString("User requested more bins for better cell grouping", flag_file);
                     showMessage("More Bins Requested", "Your request for more bins has been recorded. The workflow will restart the cell grouping step with more bins. You can now close ImageJ.");
                     run("Close All");
                     eval("script", "System.exit(0);");
@@ -187,3 +206,9 @@ for (d = 0; d < conditionDirs.length; d++) {
 }
 
 print("Thresholding of grouped cells completed.");
+print("=== Threshold Grouped Cells Macro Completed ===");
+
+// Auto-close ImageJ if requested
+if (auto_close) {
+    eval("script", "System.exit(0);");
+} 

@@ -172,6 +172,8 @@
         "{output_dir}/grouped_masks",
         "--imagej",
         "{imagej_path}",
+        "--macro",
+        "macros/threshold_grouped_cells.ijm",
         "--channels",
         "{analysis_channels}"
       ],
