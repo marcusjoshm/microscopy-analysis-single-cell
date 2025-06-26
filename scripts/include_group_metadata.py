@@ -25,6 +25,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger("GroupMetadataAnalysis")
 
+def read_csv_robust(file_path):
+    """
+    Read CSV file with robust encoding handling.
+    
+    Args:
+        file_path (Path or str): Path to the CSV file
+        
+    Returns:
+        pandas.DataFrame: Loaded dataframe, or None if failed
+    """
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
+    
+    for encoding in encodings:
+        try:
+            df = pd.read_csv(file_path, encoding=encoding)
+            logger.debug(f"Successfully read {file_path} with {encoding} encoding")
+            return df
+        except UnicodeDecodeError:
+            logger.debug(f"Failed to read {file_path} with {encoding} encoding")
+            continue
+        except Exception as e:
+            logger.error(f"Error reading {file_path} with {encoding} encoding: {e}")
+            continue
+    
+    logger.error(f"Failed to read {file_path} with any supported encoding")
+    return None
+
 def find_group_metadata_files(grouped_cells_dir):
     """
     Find all cell group metadata CSV files.
@@ -42,7 +69,9 @@ def find_group_metadata_files(grouped_cells_dir):
     
     # Find all *_cell_groups.csv files recursively
     for csv_file in grouped_cells_dir.glob("**/*_cell_groups.csv"):
-        metadata_files.append(csv_file)
+        # Filter out macOS metadata files
+        if not csv_file.name.startswith('._'):
+            metadata_files.append(csv_file)
     
     logger.info(f"Found {len(metadata_files)} group metadata files")
     return metadata_files
@@ -68,13 +97,15 @@ def find_analysis_file(analysis_dir, output_dir=None):
         
         # Look for dish-specific combined files
         dish_combined = analysis_dir / f"{dish_name}_combined_analysis.csv"
-        if dish_combined.exists():
+        if dish_combined.exists() and not dish_combined.name.startswith('._'):
             logger.info(f"Found dish-specific combined analysis file: {dish_combined}")
             return dish_combined
     
     # Look for combined_results.csv or similar
     for pattern in ["*combined*.csv", "*combined_analysis.csv", "combined_results.csv"]:
         combined_files = list(analysis_dir.glob(pattern))
+        # Filter out macOS metadata files
+        combined_files = [f for f in combined_files if not f.name.startswith('._')]
         if combined_files:
             combined_files.sort(key=lambda f: f.stat().st_size, reverse=True)
             logger.info(f"Found combined analysis file: {combined_files[0]}")
@@ -82,6 +113,8 @@ def find_analysis_file(analysis_dir, output_dir=None):
     
     # If not found, look for any CSV file that might be the combined results
     csv_files = list(analysis_dir.glob("*.csv"))
+    # Filter out macOS metadata files
+    csv_files = [f for f in csv_files if not f.name.startswith('._')]
     if csv_files:
         # Use the largest CSV file as it's likely the combined results
         csv_files.sort(key=lambda f: f.stat().st_size, reverse=True)
@@ -105,7 +138,11 @@ def load_group_metadata(metadata_files):
     
     for file_path in metadata_files:
         try:
-            df = pd.read_csv(file_path)
+            df = read_csv_robust(file_path)
+            
+            if df is None:
+                logger.error(f"Failed to read {file_path}")
+                continue
             
             # Display sample data for debugging
             logger.info(f"Sample data from {file_path}:\n{df.head(2)}")
@@ -162,7 +199,10 @@ def merge_metadata_with_analysis(group_metadata_df, analysis_file_path, output_p
     """
     try:
         # Load analysis results
-        analysis_df = pd.read_csv(analysis_file_path)
+        analysis_df = read_csv_robust(analysis_file_path)
+        if analysis_df is None:
+            logger.error(f"Failed to read analysis file: {analysis_file_path}")
+            return False
         logger.info(f"Loaded analysis file with {len(analysis_df)} records")
         
         # Print column names for debugging

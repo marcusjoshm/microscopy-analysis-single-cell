@@ -206,6 +206,8 @@
         "{output_dir}/masks",
         "--imagej",
         "{imagej_path}",
+        "--macro",
+        "macros/create_cell_masks.ijm",
         "--auto-close",
         "--channels",
         "{analysis_channels}"
@@ -227,6 +229,8 @@
         "{timepoints}",
         "--imagej",
         "{imagej_path}",
+        "--macro",
+        "macros/analyze_cell_masks.ijm",
         "--channels",
         "{analysis_channels}"
       ],

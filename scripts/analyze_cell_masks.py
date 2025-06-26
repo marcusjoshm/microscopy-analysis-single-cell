@@ -6,6 +6,9 @@ Cell Mask Analysis Script
 
 This script uses ImageJ to analyze mask files, running the Analyze Particles
 function and capturing the results directly from stdout to create CSV files.
+
+This version uses a dedicated macro file with parameter passing instead of 
+creating permanent macro files with hardcoded paths.
 """
 
 import os
@@ -45,105 +48,83 @@ TIMEPOINT_TO_MINUTES = {
     't06': '75'   # t06
 }
 
-def create_analyze_particles_macro(mask_paths, csv_file):
+def create_macro_with_parameters(macro_template_file, mask_paths, csv_file, auto_close=False):
     """
-    Create an ImageJ macro that uses Analyze Particles to process specific mask files
-    and saves the summary directly as a CSV file.
+    Create a temporary macro file with parameters embedded from the dedicated macro template.
     
     Args:
+        macro_template_file (str): Path to the dedicated macro template file
         mask_paths (list): List of paths to mask files to analyze
         csv_file (str): Path to the CSV file to save results
+        auto_close (bool): Whether to add auto-close functionality
         
     Returns:
-        str: Path to the created macro file
+        str: Path to the created temporary macro file
     """
-    # Create a macro file
-    macro_file = Path("macros/analyze_particles_batch.ijm")
-    
-    # Ensure the directory exists
-    macro_file.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Start building macro content
-    macro_content = f"""// Analyze Particles Batch Macro
-setBatchMode(true);
-
-// Create an array to store slice names
-var sliceNames = newArray({len(mask_paths)});
-
-"""
-
-    # Add each mask file to be processed
-    for i, mask_path in enumerate(mask_paths):
-        # Extract the base file name without extension
-        file_basename = os.path.basename(mask_path).replace(".tif", "").replace(".tiff", "")
-        # Get the parent folder name
-        parent_folder = os.path.basename(os.path.dirname(mask_path))
-        # Combined name for slice identification
-        slice_name = f"{parent_folder}_{file_basename}"
+    try:
+        # Read the dedicated macro template
+        with open(macro_template_file, 'r') as f:
+            template_content = f.read()
         
-        macro_content += f"""
-// Store slice name at index {i}
-sliceNames[{i}] = "{slice_name}";
-
-// Process mask {i+1}: {mask_path}
-print("ANALYSIS_START:{mask_path}");
-open("{mask_path}");
-
-// Run Analyze Particles with the exact specified parameters
-run("Analyze Particles...", "size=0.10-Infinity summarize");
-
-print("ANALYSIS_END:{mask_path}");
-
-// Close all open images
-while (nImages > 0) {{
-    selectImage(nImages);
-    close();
-}}
+        # Remove the #@ parameter declarations since we're embedding the values
+        lines = template_content.split('\n')
+        filtered_lines = []
+        for line in lines:
+            if not line.strip().startswith('#@'):
+                filtered_lines.append(line)
+        
+        # Ensure paths use forward slashes for ImageJ
+        normalized_mask_paths = []
+        for mask_path in mask_paths:
+            normalized_path = str(mask_path).replace('\\', '/')
+            normalized_mask_paths.append(normalized_path)
+        
+        csv_file_path = str(csv_file).replace('\\', '/')
+        
+        # Create semicolon-separated list of mask files
+        mask_files_list = ";".join(normalized_mask_paths)
+        
+        # Add parameter definitions at the beginning
+        parameter_definitions = f"""
+// Parameters embedded from Python script
+mask_files_list = "{mask_files_list}";
+csv_file = "{csv_file_path}";
+auto_close = {str(auto_close).lower()};
 """
-    
-    # Add final summary saving
-    macro_content += f"""
-// Update slice names in the Summary table
-if (isOpen("Summary")) {{
-    for (i=0; i<sliceNames.length; i++) {{
-        Table.set("Slice", i, sliceNames[i], "Summary");
-    }}
-    Table.update("Summary");
-    
-    // Save the Summary table as CSV
-    print("Saving summary to: {csv_file}");
-    Table.save("{csv_file}", "Summary");
-    close("Summary");
-}}
+        
+        # Combine parameters with the filtered template content
+        macro_content = parameter_definitions + '\n'.join(filtered_lines)
+        
+        # Create temporary macro file
+        temp_macro = tempfile.NamedTemporaryFile(mode='w', suffix='.ijm', delete=False)
+        temp_macro.write(macro_content)
+        temp_macro.close()
+        
+        logger.info(f"Created temporary macro file: {temp_macro.name}")
+        return temp_macro.name
+        
+    except Exception as e:
+        logger.error(f"Error creating macro with parameters: {e}")
+        return None
 
-print("MACRO_COMPLETE");
-setBatchMode(false);
-run("Quit");
-"""
-    
-    # Write the macro content to the file
-    with open(macro_file, 'w') as f:
-        f.write(macro_content)
-    
-    logger.info(f"Created ImageJ macro file: {macro_file}")
-    return str(macro_file)
-
-def run_imagej_macro(imagej_path, macro_file):
+def run_imagej_macro(imagej_path, macro_file, auto_close=False):
     """
-    Run ImageJ with a given macro.
+    Run ImageJ with the dedicated macro using -batch mode.
     
     Args:
         imagej_path (str): Path to the ImageJ executable
-        macro_file (str): Path to the ImageJ macro file
+        macro_file (str): Path to the dedicated ImageJ macro file
+        auto_close (bool): Whether the macro will automatically close ImageJ
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        # Use the -batch flag to run the macro
-        cmd = [imagej_path, "-batch", macro_file]
+        # Use -batch mode for headless execution
+        cmd = [imagej_path, "-batch", str(macro_file)]
         
-        logger.info(f"Running ImageJ command: {cmd}")
+        logger.info(f"Running ImageJ command: {' '.join(cmd)}")
+        logger.info(f"ImageJ will {'auto-close' if auto_close else 'remain open'} after execution")
         
         # Run ImageJ in headless mode with the macro
         process = subprocess.Popen(
@@ -184,9 +165,47 @@ def run_imagej_macro(imagej_path, macro_file):
         
         logger.info(f"Successfully processed {results_count} mask files")
         return results_count > 0
-    
+        
     except Exception as e:
         logger.error(f"Error running ImageJ: {e}")
+        return False
+
+def check_macro_file(macro_file):
+    """
+    Check if the dedicated macro file exists and is readable.
+    
+    Args:
+        macro_file (str): Path to the macro file
+        
+    Returns:
+        bool: True if macro file is accessible, False otherwise
+    """
+    macro_path = Path(macro_file)
+    
+    if not macro_path.exists():
+        logger.error(f"Macro file does not exist: {macro_file}")
+        return False
+    
+    if not macro_path.is_file():
+        logger.error(f"Macro path is not a file: {macro_file}")
+        return False
+    
+    try:
+        with open(macro_path, 'r') as f:
+            content = f.read()
+            # Check if it contains the expected parameter declarations
+            if '#@ String mask_files_list' not in content:
+                logger.warning(f"Macro file may not be compatible - missing mask_files_list parameter")
+            if '#@ String csv_file' not in content:
+                logger.warning(f"Macro file may not be compatible - missing csv_file parameter")
+            if '#@ Boolean auto_close' not in content:
+                logger.warning(f"Macro file may not be compatible - missing auto_close parameter")
+        
+        logger.info(f"Macro file validated: {macro_file}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Cannot read macro file {macro_file}: {e}")
         return False
 
 def find_mask_files(input_dir, max_files=50, regions=None, timepoints=None):
@@ -367,7 +386,7 @@ def generate_csv_filename(directory_path, output_dir):
     
     return os.path.join(output_dir, csv_name)
 
-def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path):
+def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path, macro_template_file, auto_close=False):
     """
     Process a directory of mask files.
     
@@ -376,6 +395,8 @@ def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path):
         mask_paths (list): List of mask file paths to process
         output_dir (str): Output directory for results
         imagej_path (str): Path to the ImageJ executable
+        macro_template_file (str): Path to the dedicated macro template file
+        auto_close (bool): Whether to add auto-close functionality
         
     Returns:
         bool: True if successful, False otherwise
@@ -383,18 +404,38 @@ def process_mask_directory(dir_path, mask_paths, output_dir, imagej_path):
     # Generate an output CSV filename for the directory
     csv_file = generate_csv_filename(dir_path, output_dir)
     
-    # Create a macro for this batch of files
-    macro_file = create_analyze_particles_macro(mask_paths, csv_file)
+    # Create temporary macro with embedded parameters
+    logger.info("Creating macro with embedded parameters...")
+    temp_macro_file = create_macro_with_parameters(
+        macro_template_file,
+        mask_paths,
+        csv_file,
+        auto_close
+    )
     
-    # Run the macro with ImageJ
-    success = run_imagej_macro(imagej_path, macro_file)
+    if not temp_macro_file:
+        logger.error("Failed to create macro with parameters")
+        return False
     
-    if success:
-        logger.info(f"Successfully analyzed {len(mask_paths)} mask files in {dir_path}")
-    else:
-        logger.error(f"Failed to analyze mask files in {dir_path}")
+    try:
+        # Run the macro with ImageJ
+        logger.info("Starting mask analysis process...")
+        success = run_imagej_macro(imagej_path, temp_macro_file, auto_close)
+        
+        if success:
+            logger.info(f"Successfully analyzed {len(mask_paths)} mask files in {dir_path}")
+        else:
+            logger.error(f"Failed to analyze mask files in {dir_path}")
+        
+        return success
     
-    return success
+    finally:
+        # Clean up temporary macro file
+        try:
+            os.unlink(temp_macro_file)
+            logger.debug(f"Cleaned up temporary macro file: {temp_macro_file}")
+        except Exception as e:
+            logger.warning(f"Could not clean up temporary macro file {temp_macro_file}: {e}")
 
 def create_analysis_macro(input_dir, output_dir, imagej_path, auto_close=True):
     """
@@ -469,7 +510,7 @@ def create_analysis_macro(input_dir, output_dir, imagej_path, auto_close=True):
 
 def main():
     """Main function to analyze cell masks."""
-    parser = argparse.ArgumentParser(description='Analyze cell masks using ImageJ')
+    parser = argparse.ArgumentParser(description='Analyze cell masks using ImageJ with dedicated macro')
     
     parser.add_argument('--input', '-i', required=True,
                         help='Directory containing mask files')
@@ -477,6 +518,8 @@ def main():
                         help='Directory for output analysis files')
     parser.add_argument('--imagej', required=True,
                         help='Path to ImageJ executable')
+    parser.add_argument('--macro', default='macros/analyze_cell_masks.ijm',
+                        help='Path to the dedicated ImageJ macro file (default: macros/analyze_cell_masks.ijm)')
     parser.add_argument('--regions', nargs='+',
                         help='Specific regions to process (e.g., R_1 R_2)')
     parser.add_argument('--timepoints', '-t', nargs='+',
@@ -489,6 +532,11 @@ def main():
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output, exist_ok=True)
+    
+    # Check macro file
+    if not check_macro_file(args.macro):
+        logger.error("Macro file validation failed")
+        return 1
     
     # Find mask files grouped by directory
     mask_files_by_dir = find_mask_files(
@@ -507,7 +555,14 @@ def main():
     total_dirs = len(mask_files_by_dir)
     
     for dir_path, mask_paths in mask_files_by_dir.items():
-        success = process_mask_directory(dir_path, mask_paths, args.output, args.imagej)
+        success = process_mask_directory(
+            dir_path, 
+            mask_paths, 
+            args.output, 
+            args.imagej, 
+            args.macro,
+            auto_close=True  # Always auto-close for batch processing
+        )
         if success:
             success_count += 1
     

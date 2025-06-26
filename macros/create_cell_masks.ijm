@@ -1,47 +1,60 @@
-// Cell Mask Creation Macro
-// Creates individual cell masks by applying ROIs to a combined mask image
+// Create Cell Masks Macro for Single Cell Analysis Workflow
+// This macro creates individual cell masks by applying ROIs to combined mask images
+// Parameters are passed from the Python script
 
-// Input parameters
-roiFile = "/Volumes/NX-01-A/2025-06-24_test/ROIs/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/ROIs_R_1_Merged_Processed001_ch00_t00_rois.zip";
-maskFile = "/Volumes/NX-01-A/2025-06-24_test/combined_masks/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/MASK_R_1_Merged_Processed001_ch00_t00.tif";
-outputDir = "/Volumes/NX-01-A/2025-06-24_test/masks/U2OS_TAOK2_transfection_washout_Rep_2_RTN4/R_1_Merged_Processed001_ch00_t00";
+#@ String roi_file
+#@ String mask_file
+#@ String output_dir
+#@ Boolean auto_close
 
-// Print parameters for debugging
-print("ROI file: " + roiFile);
-print("Mask file: " + maskFile);
-print("Output directory: " + outputDir);
+// Enable batch mode for better performance
+setBatchMode(true);
+
+// Validate input parameters
+if (roi_file == "") {
+    exit("Error: ROI file not specified");
+}
+if (mask_file == "") {
+    exit("Error: Mask file not specified");
+}
+if (output_dir == "") {
+    exit("Error: Output directory not specified");
+}
+
+print("=== Create Cell Masks Macro Started ===");
+print("ROI file: " + roi_file);
+print("Mask file: " + mask_file);
+print("Output directory: " + output_dir);
+print("Auto close: " + auto_close);
 
 // Create output directory if it doesn't exist
-File.makeDirectory(outputDir);
+File.makeDirectory(output_dir);
 
 // Reset ROI Manager
 roiManager("reset");
 
 // Open ROIs
 print("Opening ROI file");
-roiManager("Open", roiFile);
+roiManager("Open", roi_file);
 roi_count = roiManager("count");
 print("Found " + roi_count + " ROIs");
 
 if (roi_count == 0) {
-    print("No ROIs found in file: " + roiFile);
+    print("No ROIs found in file: " + roi_file);
     exit("No ROIs found");
 }
 
 // Open the mask image
 print("Opening mask file");
-open(maskFile);
+open(mask_file);
 if (nImages == 0) {
-    print("Failed to open mask file: " + maskFile);
+    print("Failed to open mask file: " + mask_file);
     exit("Failed to open mask file");
 }
 
 // Get the title of the open image
 maskTitle = getTitle();
 print("Mask opened: " + maskTitle);
-
-// Set batch mode for faster processing
-setBatchMode(true);
 
 // Process each ROI
 for (i = 0; i < roi_count; i++) {
@@ -59,7 +72,7 @@ for (i = 0; i < roi_count; i++) {
     
     // Save the cell mask
     cell_num = i + 1;
-    cell_path = outputDir + "/MASK_CELL" + cell_num + ".tif";
+    cell_path = output_dir + "/MASK_CELL" + cell_num + ".tif";
     print("Saving mask " + cell_num + " to: " + cell_path);
     saveAs("Tiff", cell_path);
     
@@ -78,6 +91,9 @@ roiManager("reset");
 setBatchMode(false);
 
 print("Cell mask creation completed for " + roi_count + " cells");
+print("=== Create Cell Masks Macro Completed ===");
 
-// Exit ImageJ
-eval("script", "System.exit(0);");
+// Auto-close ImageJ if requested
+if (auto_close) {
+    eval("script", "System.exit(0);");
+} 

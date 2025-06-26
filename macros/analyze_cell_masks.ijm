@@ -1,153 +1,95 @@
-// ImageJ macro for analyzing cell masks
-// This macro processes segmented cell masks to extract measurements and features
+// Analyze Cell Masks Macro for Single Cell Analysis Workflow
+// This macro analyzes cell mask files using Analyze Particles
+// Parameters are passed from the Python script
 
-// Set batch mode to speed up processing
+#@ String mask_files_list
+#@ String csv_file
+#@ Boolean auto_close
+
+// Enable batch mode for better performance
 setBatchMode(true);
 
-// Function to get parameters from arguments
-function getArgument(args, key) {
-    // Parse argument string (format: key1=value1 key2=value2)
-    args = split(args, " ");
-    for (i = 0; i < args.length; i++) {
-        arg = split(args[i], "=");
-        if (arg[0] == key) {
-            return arg[1];
-        }
-    }
-    return "";
+// Validate input parameters
+if (mask_files_list == "") {
+    exit("Error: Mask files list not specified");
+}
+if (csv_file == "") {
+    exit("Error: CSV output file not specified");
 }
 
-// Get parameters from macro arguments
-args = getArgument();
-input_dir = getArgument(args, "input_dir");
-output_dir = getArgument(args, "output_dir");
-regions = getArgument(args, "regions");
-timepoints = getArgument(args, "timepoints");
+print("=== Analyze Cell Masks Macro Started ===");
+print("CSV output file: " + csv_file);
+print("Auto close: " + auto_close);
 
-// Default values if not provided
-if (input_dir == "") input_dir = getDirectory("Choose input masks directory");
-if (output_dir == "") output_dir = getDirectory("Choose output directory");
+// Parse the mask files list (semicolon-separated)
+mask_files = split(mask_files_list, ";");
+num_files = mask_files.length;
 
-// Parse regions and timepoints if provided
-regions_array = newArray();
-if (regions != "") {
-    regions_array = split(regions, ",");
-}
+print("Number of mask files to process: " + num_files);
 
-timepoints_array = newArray();
-if (timepoints != "") {
-    timepoints_array = split(timepoints, ",");
-}
+// Create an array to store slice names
+var sliceNames = newArray(num_files);
 
-// Process all conditions if no specific regions/timepoints provided
-conditions = getFileList(input_dir);
-
-// Log macro start
-print("Starting mask analysis macro");
-print("Input directory: " + input_dir);
-print("Output directory: " + output_dir);
-if (regions != "") print("Regions to process: " + regions);
-if (timepoints != "") print("Timepoints to process: " + timepoints);
-
-// Create output directory if it doesn't exist
-File.makeDirectory(output_dir);
-
-// Process each condition
-for (i = 0; i < conditions.length; i++) {
-    condition_name = conditions[i];
-    // Skip non-directories and hidden files
-    if (!File.isDirectory(input_dir + condition_name) || startsWith(condition_name, ".")) {
-        continue;
+// Process each mask file
+for (i = 0; i < num_files; i++) {
+    mask_path = mask_files[i];
+    print("Processing mask " + (i+1) + ": " + mask_path);
+    
+    // Extract the base file name without extension for slice naming
+    file_basename = File.getName(mask_path);
+    if (endsWith(file_basename, ".tif")) {
+        file_basename = substring(file_basename, 0, lengthOf(file_basename) - 4);
+    } else if (endsWith(file_basename, ".tiff")) {
+        file_basename = substring(file_basename, 0, lengthOf(file_basename) - 5);
     }
     
-    condition_dir = input_dir + condition_name;
-    print("Processing condition: " + condition_name);
+    // Get the parent folder name
+    parent_folder = File.getParent(mask_path);
+    parent_name = File.getName(parent_folder);
     
-    // Create corresponding output directory
-    File.makeDirectory(output_dir + condition_name);
+    // Combined name for slice identification
+    slice_name = parent_name + "_" + file_basename;
+    sliceNames[i] = slice_name;
     
-    // Find all mask files - either process all or filter by region/timepoint
-    mask_files = getFileList(condition_dir);
+    print("ANALYSIS_START:" + mask_path);
     
-    for (j = 0; j < mask_files.length; j++) {
-        mask_file = mask_files[j];
-        
-        // Check if it's a file and a mask file
-        if (!endsWith(mask_file, ".tif") && !endsWith(mask_file, ".tiff")) {
-            continue;
-        }
-        
-        // If regions specified, check if this file matches
-        if (regions_array.length > 0) {
-            matches_region = false;
-            for (k = 0; k < regions_array.length; k++) {
-                if (indexOf(mask_file, regions_array[k]) >= 0) {
-                    matches_region = true;
-                    break;
-                }
-            }
-            if (!matches_region) continue;
-        }
-        
-        // If timepoints specified, check if this file matches
-        if (timepoints_array.length > 0) {
-            matches_timepoint = false;
-            for (k = 0; k < timepoints_array.length; k++) {
-                if (indexOf(mask_file, timepoints_array[k]) >= 0) {
-                    matches_timepoint = true;
-                    break;
-                }
-            }
-            if (!matches_timepoint) continue;
-        }
-        
-        // Process the mask file
-        print("  Processing mask: " + mask_file);
-        
-        // Open the mask image
-        open(condition_dir + mask_file);
-        original_id = getImageID();
-        
-        // Get base filename without extension for saving results
-        dot_index = lastIndexOf(mask_file, ".");
-        base_name = substring(mask_file, 0, dot_index);
-        
-        // Create duplicates for processing
-        run("Duplicate...", "title=watershed");
-        watershed_id = getImageID();
-        
-        // Apply watershed algorithm to separate touching cells
-        run("Watershed");
-        
-        // Set measurements to perform
-        run("Set Measurements...", "area mean standard modal min centroid center perimeter bounding fit shape feret's integrated median skewness kurtosis area_fraction stack redirect=None decimal=3");
-        
-        // Analyze particles to get measurements
-        run("Analyze Particles...", "size=50-Infinity pixel show=Masks display clear include summarize");
-        
-        // Get the results table
-        results_count = nResults;
-        print("    Found " + results_count + " cells");
-        
-        // Save results table
-        saveAs("Results", output_dir + condition_name + "/" + base_name + "_measurements.csv");
-        
-        // Save the watershed mask
-        selectImage(watershed_id);
-        saveAs("Tiff", output_dir + condition_name + "/" + base_name + "_watershed.tif");
-        
-        // Save the ROIs if any were created
-        if (results_count > 0) {
-            roiManager("Save", output_dir + condition_name + "/" + base_name + "_ROIs.zip");
-            roiManager("Reset");
-        }
-        
-        // Close all open images
-        close("*");
+    // Open the mask file
+    open(mask_path);
+    
+    // Run Analyze Particles with the specified parameters
+    run("Analyze Particles...", "size=0.10-Infinity summarize");
+    
+    print("ANALYSIS_END:" + mask_path);
+    
+    // Close all open images
+    while (nImages > 0) {
+        selectImage(nImages);
+        close();
     }
 }
 
-// Exit batch mode
+// Update slice names in the Summary table and save as CSV
+if (isOpen("Summary")) {
+    for (i = 0; i < sliceNames.length; i++) {
+        Table.set("Slice", i, sliceNames[i], "Summary");
+    }
+    Table.update("Summary");
+    
+    // Save the Summary table as CSV
+    print("Saving summary to: " + csv_file);
+    Table.save(csv_file, "Summary");
+    close("Summary");
+} else {
+    print("Warning: No Summary table was created");
+}
+
+print("MACRO_COMPLETE");
+print("=== Analyze Cell Masks Macro Completed ===");
+
+// Turn off batch mode
 setBatchMode(false);
 
-print("Mask analysis complete!");
+// Auto-close ImageJ if requested
+if (auto_close) {
+    run("Quit");
+} 
