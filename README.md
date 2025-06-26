@@ -283,15 +283,15 @@ Enter your selection: 1 2 3
 
 **Important:** Make sure all selected regions were captured with the same channels, or the program will terminate.
 
-### Selecting Channels
+### Selecting Segmentation Channels
 
-After selecting regions, you'll be prompted to select channels:
+After selecting regions, you'll be prompted to select channels for segmentation:
 
 ```
 ================================================================================
-MANUAL STEP REQUIRED: select_channels
+MANUAL STEP REQUIRED: select_segmentation_channels
 ================================================================================
-Review available channels:
+Review available channels for segmentation:
 
 Available channels:
 1. ch00
@@ -310,7 +310,33 @@ The channels will be in the order of capture settings configured in LASX:
 - ch01 is the second channel
 - And so on
 
-**Important:** Select only ONE channel at a time for analysis. For example, if you are analyzing stress granules, select the channel that corresponds to G3BP1.
+**Important:** Select the channel(s) that will be used for cell segmentation. This is typically a channel that shows cell boundaries or nuclei clearly (e.g., DAPI for nuclei or a cytoplasmic marker).
+
+Enter your channel selection and press Enter.
+
+### Selecting Analysis Channels
+
+Next, you'll be prompted to select channels for analysis:
+
+```
+================================================================================
+MANUAL STEP REQUIRED: select_analysis_channels
+================================================================================
+Review available channels for analysis:
+
+Available channels:
+1. ch00
+2. ch01
+
+Input options for channels:
+- Enter channels as space-separated text (e.g., 'ch00 ch01')
+- Enter numbers from the list (e.g., '1 2')
+- Type 'all' to select all channels
+
+Enter your selection:
+```
+
+**Important:** Select only ONE channel at a time for analysis. For example, if you are analyzing stress granules, select the channel that corresponds to G3BP1. This is the channel where you want to measure and threshold your structures of interest.
 
 Enter your channel selection and press Enter to continue with the analysis.
 
