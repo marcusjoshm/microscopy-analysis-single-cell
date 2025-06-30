@@ -1174,7 +1174,7 @@ def main():
     """Main entry point for the script."""
     parser = argparse.ArgumentParser(description='Microscopy Single-Cell Analysis Workflow Orchestrator')
     
-    parser.add_argument('--config', '-c', required=True,
+    parser.add_argument('--config', '-c', default='config.json',
                         help='Path to workflow configuration file (JSON)')
     parser.add_argument('--input', '-i', required=True,
                         help='Input directory containing microscopy data to analyze')
