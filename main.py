@@ -22,25 +22,8 @@ from src.python.core.config import create_default_config
 def main():
     """Main entry point for the microscopy single-cell analysis pipeline."""
     try:
-        # Show header
-        show_header()
-        
-        # Parse command line arguments (without validation for menu)
-        cli = create_cli()
-        args = cli.parser.parse_args()
-        
-        # Handle interactive mode or show menu if no processing options selected
-        if args.interactive or not any([args.complete, args.preprocess, args.segment, args.analyze, 
-                                      args.data_exploration, args.roi_management, args.path_detection]):
-            args = cli.show_interactive_menu(args)
-            if args is None:  # User chose to exit
-                return 0
-        
-        # Now validate arguments after menu processing
-        cli._validate_args(args)
-        
         # Load configuration
-        config_path = args.config
+        config_path = "config.json"
         if not Path(config_path).exists():
             print(f"Configuration file not found: {config_path}")
             print("Creating default configuration...")
@@ -48,47 +31,85 @@ def main():
         else:
             config = Config(config_path)
         
-        # Validate configuration
+        # Validate configuration (but don't exit on missing software paths)
         try:
             config.validate()
         except ConfigError as e:
-            print(f"Configuration error: {e}")
-            print("Please check your configuration file.")
-            return 1
+            print(f"Configuration warning: {e}")
+            print("Some features may not work without proper software paths.")
+            print("You can set software paths in the configuration file.")
+            print()
         
-        # Create logger
-        log_level = "DEBUG" if args.verbose else "INFO"
-        logger = PipelineLogger(args.output, log_level=log_level)
-        
-        # Create and run pipeline
-        pipeline = Pipeline(config, logger, args)
-        success = pipeline.run()
-        
-        if success:
-            print("\n" + "="*80)
-            print("Pipeline completed successfully!")
-            print("="*80)
-            return 0
-        else:
-            print("\n" + "="*80)
-            print("Pipeline failed!")
-            print("="*80)
-            return 1
+        while True:
+            # Show header
+            show_header()
             
-    except CLIError as e:
-        print(f"CLI Error: {e}")
-        return 1
-    except ConfigError as e:
-        print(f"Configuration Error: {e}")
-        return 1
+            # Parse command line arguments (without validation for menu)
+            cli = create_cli()
+            args = cli.parser.parse_args()
+            
+            # Handle interactive mode or show menu if no processing options selected
+            if args.interactive or not any([args.complete, args.preprocess, args.segment, args.analyze, 
+                                          args.data_exploration, args.roi_management, args.path_detection]):
+                args = cli.show_interactive_menu(args)
+                if args is None:  # User chose to exit
+                    print("Goodbye!")
+                    return 0
+            
+            # Now validate arguments after menu processing
+            try:
+                cli._validate_args(args)
+            except CLIError as e:
+                print(f"CLI Error: {e}")
+                continue  # Return to menu
+            
+            # Create logger
+            log_level = "DEBUG" if args.verbose else "INFO"
+            logger = PipelineLogger(args.output, log_level=log_level)
+            
+            # Create and run pipeline
+            pipeline = Pipeline(config, logger, args)
+            success = pipeline.run()
+            
+            if success:
+                print("\n" + "="*60)
+                print("Pipeline completed successfully!")
+                print("="*60)
+            else:
+                print("\n" + "="*60)
+                print("Pipeline completed with errors. Check logs for details.")
+                print("="*60)
+            
+            # Check if this was an interactive module
+            interactive_modules = ['data_exploration', 'roi_management', 'path_detection']
+            is_interactive = any(getattr(args, module, False) for module in interactive_modules)
+            
+            if is_interactive:
+                # For interactive modules, show completion message
+                print("\n" + "="*60)
+                print("Interactive module completed. Returning to main menu...")
+                print("="*60 + "\n")
+                
+                # Small delay to let user read the completion message
+                import time
+                time.sleep(1)
+            else:
+                # For non-interactive modules, show completion message
+                print("\n" + "="*60)
+                print("Pipeline completed. Returning to main menu...")
+                print("="*60 + "\n")
+                
+                # Small delay to let user read the output
+                import time
+                time.sleep(2)
+            
     except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
+        print("\nPipeline interrupted by user")
         return 1
     except Exception as e:
         print(f"Unexpected error: {e}")
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
+        import traceback
+        traceback.print_exc()
         return 1
 
 
