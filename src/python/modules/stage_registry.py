@@ -5,17 +5,23 @@ Registers all available pipeline stages and their implementations.
 """
 
 from ..core.stages import register_stage
-from .stage_classes import (
-    PreprocessingStage,
-    SegmentationStage,
-    AnalysisStage
-)
 
 
 def register_all_stages():
     """Register all available pipeline stages."""
     
+    # Import stage classes here to avoid circular imports
+    from .stage_classes import (
+        DataSelectionStage,
+        SegmentationStage,
+        ProcessSingleCellDataStage,
+        ThresholdGroupedCellsStage,
+        AnalysisStage
+    )
+    
     # Core processing stages (in execution order)
-    register_stage('preprocessing', order=1)(PreprocessingStage)
+    register_stage('data_selection', order=1)(DataSelectionStage)
     register_stage('segmentation', order=2)(SegmentationStage)
-    register_stage('analysis', order=3)(AnalysisStage) 
+    register_stage('process_single_cell', order=3)(ProcessSingleCellDataStage)
+    register_stage('threshold_grouped_cells', order=4)(ThresholdGroupedCellsStage)
+    register_stage('analysis', order=5)(AnalysisStage) 
