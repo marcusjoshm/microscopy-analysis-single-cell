@@ -113,17 +113,17 @@ class PipelineCLI:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Examples:
-  # Run complete processing pipeline
-  python main.py --input /path/to/data --output /path/to/output --complete
+  # Run complete analysis workflow
+  python main.py --input /path/to/data --output /path/to/output --complete-workflow
   
-  # Run only preprocessing
-  python main.py --input /path/to/data --output /path/to/output --preprocess
+  # Run data selection
+  python main.py --input /path/to/data --output /path/to/output --data-selection
   
   # Run segmentation
-  python main.py --input /path/to/data --output /path/to/output --segment
+  python main.py --input /path/to/data --output /path/to/output --segmentation
   
   # Run analysis
-  python main.py --input /path/to/data --output /path/to/output --analyze
+  python main.py --input /path/to/data --output /path/to/output --analysis
             """
         )
         
@@ -147,39 +147,34 @@ Examples:
         
         # Processing options
         parser.add_argument(
-            '--complete',
+            '--data-selection',
             action='store_true',
-            help='Run complete analysis pipeline'
+            help='Run data selection (conditions, regions, timepoints, channels)'
         )
         parser.add_argument(
-            '--preprocess',
+            '--segmentation',
             action='store_true',
-            help='Run preprocessing stage only'
+            help='Run single-cell segmentation (bin images and launch Cellpose)'
         )
         parser.add_argument(
-            '--segment',
+            '--process-single-cell',
             action='store_true',
-            help='Run cell segmentation stage only'
+            help='Run single-cell data processing (tracking, resizing, extraction, grouping)'
         )
         parser.add_argument(
-            '--analyze',
+            '--threshold-grouped-cells',
             action='store_true',
-            help='Run analysis stage only'
+            help='Run threshold grouped cells (interactive ImageJ thresholding)'
         )
         parser.add_argument(
-            '--data-exploration',
+            '--analysis',
             action='store_true',
-            help='Run data exploration and visualization'
+            help='Run analysis (combine masks, create cell masks, export results)'
         )
         parser.add_argument(
-            '--roi-management',
+            '--complete-workflow',
             action='store_true',
-            help='Run ROI management (resize and track regions of interest)'
-        )
-        parser.add_argument(
-            '--path-detection',
-            action='store_true',
-            help='Run path detection (cell tracking and trajectory analysis)'
+            help='Run complete analysis workflow (all 5 modules)'
         )
         
         # Data selection arguments
@@ -295,8 +290,8 @@ Examples:
         """
         # Check if any stage is already selected
         stage_flags = [
-            args.complete, args.preprocess, args.segment, args.analyze,
-            args.data_exploration, args.roi_management, args.path_detection
+            args.data_selection, args.segmentation, args.process_single_cell,
+            args.threshold_grouped_cells, args.analysis, args.complete_workflow
         ]
         
         if any(stage_flags):
@@ -308,17 +303,16 @@ Examples:
         print("")
         print(colorize("MENU:", Colors.bold))
         print(colorize("1. Set Input/Output Directories", Colors.green))
-        print(colorize("2. Preprocessing (image binning and preparation)", Colors.yellow))
-        print(colorize("3. Segmentation (cell detection and masking)", Colors.yellow))
-        print(colorize("4. Analysis (cell grouping and thresholding)", Colors.yellow))
-        print(colorize("5. Complete Pipeline (preprocessing + segmentation + analysis)", Colors.yellow))
-        print(colorize("6. Data Exploration (interactive cell visualization)", Colors.yellow))
-        print(colorize("7. ROI Management (resize and track regions of interest)", Colors.yellow))
-        print(colorize("8. Path Detection (cell tracking and trajectory analysis)", Colors.yellow))
-        print(colorize("9. Exit", Colors.red))
+        print(colorize("2. Run Complete Workflow", Colors.yellow))
+        print(colorize("3. Data Selection (conditions, regions, timepoints, channels)", Colors.orange))
+        print(colorize("4. Single-cell Segmentation (Cellpose)", Colors.orange))
+        print(colorize("5. Process Single-cell Data (tracking, resizing, extraction, grouping)", Colors.orange))
+        print(colorize("6. Threshold Grouped Cells (interactive ImageJ thresholding)", Colors.orange))
+        print(colorize("7. Analysis (combine masks, create cell masks, export results)", Colors.orange))
+        print(colorize("8. Exit", Colors.red))
         
         # Get user choice
-        choice = input("Select an option (1-9): ").strip().lower()
+        choice = input("Select an option (1-8): ").strip().lower()
         
         # Update args based on choice
         if choice == "1":
@@ -350,24 +344,22 @@ Examples:
                 if not args.output:
                     args.output = self._get_directory_input("Enter output directory path: ")
         elif choice == "2":
-            args.preprocess = True
+            args.complete_workflow = True
         elif choice == "3":
-            args.segment = True
+            args.data_selection = True
         elif choice == "4":
-            args.analyze = True
+            args.segmentation = True
         elif choice == "5":
-            args.complete = True
+            args.process_single_cell = True
         elif choice == "6":
-            args.data_exploration = True
+            args.threshold_grouped_cells = True
         elif choice == "7":
-            args.roi_management = True
-        elif choice == "8":
-            args.path_detection = True
-        elif choice == "9" or choice == "q" or choice == "quit":
+            args.analysis = True
+        elif choice == "8" or choice == "q" or choice == "quit":
             print("Exiting.")
             return None  # Signal to exit
         else:
-            print("Invalid choice. Please enter a number between 1-9 or 'q' to quit.")
+            print("Invalid choice. Please enter a number between 1-8 or 'q' to quit.")
             return args  # Return current args to continue loop
         
         return args

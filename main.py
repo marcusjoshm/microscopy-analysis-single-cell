@@ -41,16 +41,13 @@ def main():
             print()
         
         while True:
-            # Show header
-            show_header()
-            
             # Parse command line arguments (without validation for menu)
             cli = create_cli()
             args = cli.parser.parse_args()
             
             # Handle interactive mode or show menu if no processing options selected
-            if args.interactive or not any([args.complete, args.preprocess, args.segment, args.analyze, 
-                                          args.data_exploration, args.roi_management, args.path_detection]):
+            if args.interactive or not any([args.data_selection, args.segmentation, args.process_single_cell,
+                                          args.threshold_grouped_cells, args.analysis, args.complete_workflow]):
                 args = cli.show_interactive_menu(args)
                 if args is None:  # User chose to exit
                     print("Goodbye!")
@@ -81,7 +78,7 @@ def main():
                 print("="*60)
             
             # Check if this was an interactive module
-            interactive_modules = ['data_exploration', 'roi_management', 'path_detection']
+            interactive_modules = ['segmentation', 'threshold_grouped_cells']
             is_interactive = any(getattr(args, module, False) for module in interactive_modules)
             
             if is_interactive:
