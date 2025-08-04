@@ -13,7 +13,7 @@ import argparse
 from .config import Config
 from .logger import PipelineLogger
 from .stages import get_stage_registry, StageExecutor
-from ..modules import register_all_stages
+from ..modules.stage_registry import register_all_stages
 
 
 class Pipeline:

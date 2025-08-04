@@ -4,16 +4,30 @@ Modules for Microscopy Single-Cell Analysis Pipeline
 This package contains the specific pipeline stages and modules for microscopy analysis.
 """
 
-from .stage_registry import register_all_stages
-from .stage_classes import (
-    PreprocessingStage,
-    SegmentationStage,
-    AnalysisStage
+# Import modules that don't cause circular imports
+from .directory_setup import (
+    validate_directory_path,
+    get_recent_directories,
+    add_recent_directory,
+    prompt_for_directory,
+    save_config,
+    load_config
+)
+
+from .set_directories import (
+    set_default_directories,
+    check_default_directories,
+    get_default_directories
 )
 
 __all__ = [
-    'register_all_stages',
-    'PreprocessingStage',
-    'SegmentationStage',
-    'AnalysisStage'
+    'validate_directory_path',
+    'get_recent_directories',
+    'add_recent_directory',
+    'prompt_for_directory',
+    'save_config',
+    'load_config',
+    'set_default_directories',
+    'check_default_directories',
+    'get_default_directories'
 ] 

@@ -322,11 +322,33 @@ Examples:
         
         # Update args based on choice
         if choice == "1":
-            # Set directories
-            if not args.input:
-                args.input = self._get_directory_input("Enter input directory path: ")
-            if not args.output:
-                args.output = self._get_directory_input("Enter output directory path: ")
+            # Set directories using the set_directories module
+            try:
+                from ..modules.set_directories import set_default_directories
+                from ..modules.directory_setup import load_config, save_config
+                
+                # Load current config
+                config_path = args.config if hasattr(args, 'config') else 'config.json'
+                config = load_config(config_path)
+                
+                # Set default directories
+                input_path, output_path = set_default_directories(config, config_path)
+                
+                # Update args with the new paths
+                args.input = input_path
+                args.output = output_path
+                
+                print(f"\n✅ Directories set successfully!")
+                print(f"  Input: {input_path}")
+                print(f"  Output: {output_path}")
+                
+            except ImportError as e:
+                print(f"Error: Could not import set_directories module: {e}")
+                # Fallback to simple input
+                if not args.input:
+                    args.input = self._get_directory_input("Enter input directory path: ")
+                if not args.output:
+                    args.output = self._get_directory_input("Enter output directory path: ")
         elif choice == "2":
             args.preprocess = True
         elif choice == "3":

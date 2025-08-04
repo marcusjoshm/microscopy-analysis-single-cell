@@ -210,8 +210,10 @@ def create_default_config(config_path: str) -> Config:
             "overwrite": False
         },
         "directories": {
-            "default_input": "",
-            "default_output": ""
+            "input": "",
+            "output": "",
+            "recent_inputs": [],
+            "recent_outputs": []
         }
     }
     
