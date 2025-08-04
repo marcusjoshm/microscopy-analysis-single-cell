@@ -166,6 +166,21 @@ Examples:
             action='store_true',
             help='Run analysis stage only'
         )
+        parser.add_argument(
+            '--data-exploration',
+            action='store_true',
+            help='Run data exploration and visualization'
+        )
+        parser.add_argument(
+            '--roi-management',
+            action='store_true',
+            help='Run ROI management (resize and track regions of interest)'
+        )
+        parser.add_argument(
+            '--path-detection',
+            action='store_true',
+            help='Run path detection (cell tracking and trajectory analysis)'
+        )
         
         # Data selection arguments
         parser.add_argument(
@@ -251,14 +266,17 @@ Examples:
         Raises:
             CLIError: If arguments are invalid
         """
-        # Check if at least one processing option is selected
-        processing_options = ['complete', 'preprocess', 'segment', 'analyze']
+        # Check if at least one processing option is selected (but allow menu to be shown)
+        processing_options = ['complete', 'preprocess', 'segment', 'analyze', 
+                            'data_exploration', 'roi_management', 'path_detection']
         selected_options = [opt for opt in processing_options if getattr(args, opt, False)]
         
-        if not selected_options:
-            raise CLIError("No processing option selected. Use --complete, --preprocess, --segment, or --analyze")
+        # Only validate if we're not in interactive mode and no options are selected
+        if not selected_options and not args.interactive:
+            # Don't raise error here - let the menu handle it
+            pass
         
-        # Check if input/output directories are provided
+        # Check if input/output directories are provided (only after menu processing)
         if not args.input and not args.interactive:
             raise CLIError("Input directory is required unless using --interactive")
         
@@ -267,57 +285,68 @@ Examples:
     
     def show_interactive_menu(self, args: argparse.Namespace) -> argparse.Namespace:
         """
-        Show interactive menu for argument selection.
+        Show interactive menu if no specific stages are selected.
         
         Args:
-            args: Current arguments
+            args: Parsed arguments
             
         Returns:
-            Updated arguments
+            Updated arguments with user selection
         """
+        # Check if any stage is already selected
+        stage_flags = [
+            args.complete, args.preprocess, args.segment, args.analyze,
+            args.data_exploration, args.roi_management, args.path_detection
+        ]
+        
+        if any(stage_flags):
+            return args  # Stage already selected, no need for menu
+        
+        # Show menu
         show_header()
+        print(colorize("  🔬 Welcome Single Cell Analysis user! 🔬", Colors.bold))
+        print("")
+        print(colorize("MENU:", Colors.bold))
+        print(colorize("1. Set Input/Output Directories", Colors.green))
+        print(colorize("2. Preprocessing (image binning and preparation)", Colors.yellow))
+        print(colorize("3. Segmentation (cell detection and masking)", Colors.yellow))
+        print(colorize("4. Analysis (cell grouping and thresholding)", Colors.yellow))
+        print(colorize("5. Complete Pipeline (preprocessing + segmentation + analysis)", Colors.yellow))
+        print(colorize("6. Data Exploration (interactive cell visualization)", Colors.yellow))
+        print(colorize("7. ROI Management (resize and track regions of interest)", Colors.yellow))
+        print(colorize("8. Path Detection (cell tracking and trajectory analysis)", Colors.yellow))
+        print(colorize("9. Exit", Colors.red))
         
-        print("\n" + "="*80)
-        print("Microscopy Single-Cell Analysis Pipeline - Interactive Mode")
-        print("="*80)
+        # Get user choice
+        choice = input("Select an option (1-9): ").strip().lower()
         
-        # Get input directory
-        if not args.input:
-            print("\nInput Directory Selection:")
-            args.input = self._get_directory_input("Enter input directory path: ")
-        
-        # Get output directory
-        if not args.output:
-            print("\nOutput Directory Selection:")
-            args.output = self._get_directory_input("Enter output directory path: ")
-        
-        # Get processing options
-        if not any([args.complete, args.preprocess, args.segment, args.analyze]):
-            print("\nProcessing Options:")
-            print("1. Complete pipeline")
-            print("2. Preprocessing only")
-            print("3. Segmentation only")
-            print("4. Analysis only")
-            
-            choice = self.get_choice("Select processing option (1-4): ", [1, 2, 3, 4])
-            
-            if choice == 1:
-                args.complete = True
-            elif choice == 2:
-                args.preprocess = True
-            elif choice == 3:
-                args.segment = True
-            elif choice == 4:
-                args.analyze = True
-        
-        # Get data type
-        if not args.datatype:
-            print("\nData Type Selection:")
-            print("1. Single timepoint")
-            print("2. Multi timepoint")
-            
-            choice = self.get_choice("Select data type (1-2): ", [1, 2])
-            args.datatype = 'single_timepoint' if choice == 1 else 'multi_timepoint'
+        # Update args based on choice
+        if choice == "1":
+            # Set directories
+            if not args.input:
+                args.input = self._get_directory_input("Enter input directory path: ")
+            if not args.output:
+                args.output = self._get_directory_input("Enter output directory path: ")
+        elif choice == "2":
+            args.preprocess = True
+        elif choice == "3":
+            args.segment = True
+        elif choice == "4":
+            args.analyze = True
+        elif choice == "5":
+            args.complete = True
+        elif choice == "6":
+            args.data_exploration = True
+        elif choice == "7":
+            args.roi_management = True
+        elif choice == "8":
+            args.path_detection = True
+        elif choice == "9" or choice == "q" or choice == "quit":
+            print("Exiting.")
+            return None  # Signal to exit
+        else:
+            print("Invalid choice. Please enter a number between 1-9 or 'q' to quit.")
+            return args  # Return current args to continue loop
         
         return args
     

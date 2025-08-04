@@ -25,13 +25,19 @@ def main():
         # Show header
         show_header()
         
-        # Parse command line arguments
-        args = parse_arguments()
+        # Parse command line arguments (without validation for menu)
+        cli = create_cli()
+        args = cli.parser.parse_args()
         
-        # Handle interactive mode
-        if args.interactive:
-            cli = create_cli()
+        # Handle interactive mode or show menu if no processing options selected
+        if args.interactive or not any([args.complete, args.preprocess, args.segment, args.analyze, 
+                                      args.data_exploration, args.roi_management, args.path_detection]):
             args = cli.show_interactive_menu(args)
+            if args is None:  # User chose to exit
+                return 0
+        
+        # Now validate arguments after menu processing
+        cli._validate_args(args)
         
         # Load configuration
         config_path = args.config
