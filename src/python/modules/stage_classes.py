@@ -1050,6 +1050,109 @@ class ThresholdGroupedCellsStage(StageBase):
             return False
 
 
+class MeasureROIAreaStage(StageBase):
+    """
+    Measure ROI Area Stage
+    
+    Opens ROI lists and corresponding raw data files, then measures ROI areas.
+    Results are saved as CSV files in the analysis/cell_area folder.
+    """
+    
+    def __init__(self, config, logger, stage_name="measure_roi_area"):
+        super().__init__(config, logger, stage_name)
+        
+    def validate_inputs(self, **kwargs) -> bool:
+        """Validate inputs for measure ROI area stage."""
+        # Check if required module exists
+        module_path = Path("src/python/modules/measure_roi_area.py")
+        if not module_path.exists():
+            self.logger.error(f"Required module not found: {module_path}")
+            return False
+            
+        # Check if required macro exists
+        macro_path = Path("src/macros/measure_roi_area.ijm")
+        if not macro_path.exists():
+            self.logger.error(f"Required macro not found: {macro_path}")
+            return False
+        
+        # Check if ImageJ path is configured
+        imagej_path = self.config.get('imagej_path')
+        if not imagej_path or not Path(imagej_path).exists():
+            self.logger.error("ImageJ path not configured or does not exist")
+            return False
+        
+        # Check if input and output directories are provided
+        input_dir = kwargs.get('input_dir')
+        output_dir = kwargs.get('output_dir')
+        if not input_dir or not Path(input_dir).exists():
+            self.logger.error(f"Input directory does not exist: {input_dir}")
+            return False
+        if not output_dir:
+            self.logger.error("Output directory is required")
+            return False
+        
+        return True
+    
+    def run(self, **kwargs) -> bool:
+        """Run the measure ROI area stage."""
+        try:
+            self.logger.info("Starting Measure ROI Area Stage")
+            
+            # Get input and output directories
+            input_dir = kwargs.get('input_dir')
+            output_dir = kwargs.get('output_dir')
+            
+            if not input_dir or not output_dir:
+                self.logger.error("Input and output directories are required")
+                return False
+            
+            # Import and run the measure_roi_area module
+            from .measure_roi_area import measure_roi_areas
+            
+            # Get ImageJ path from config
+            imagej_path = self.config.get('imagej_path')
+            
+            # Create analysis/cell_area directory
+            cell_area_dir = Path(output_dir) / "analysis" / "cell_area"
+            cell_area_dir.mkdir(parents=True, exist_ok=True)
+            
+            self.logger.info(f"Measuring ROI areas using ImageJ: {imagej_path}")
+            self.logger.info(f"Input directory: {input_dir}")
+            self.logger.info(f"Output directory: {output_dir}")
+            self.logger.info(f"Cell area results will be saved to: {cell_area_dir}")
+            
+            # Run ROI area measurement
+            success = measure_roi_areas(
+                input_dir=str(input_dir),
+                output_dir=str(output_dir), 
+                imagej_path=str(imagej_path),
+                auto_close=True
+            )
+            
+            if success:
+                self.logger.info("ROI area measurement completed successfully")
+                
+                # Check if any CSV files were created
+                csv_files = list(cell_area_dir.glob("**/*.csv"))
+                if csv_files:
+                    self.logger.info(f"Created {len(csv_files)} ROI area measurement files")
+                    for csv_file in csv_files[:5]:  # Show first 5 files
+                        self.logger.info(f"  - {csv_file.relative_to(cell_area_dir)}")
+                    if len(csv_files) > 5:
+                        self.logger.info(f"  ... and {len(csv_files) - 5} more files")
+                else:
+                    self.logger.warning("No ROI area measurement files were created")
+                    
+                return True
+            else:
+                self.logger.error("Failed to measure ROI areas")
+                return False
+            
+        except Exception as e:
+            self.logger.error(f"Error in Measure ROI Area Stage: {e}")
+            return False
+
+
 class AnalysisStage(StageBase):
     """
     Analysis Stage

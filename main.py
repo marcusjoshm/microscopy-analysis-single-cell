@@ -37,6 +37,7 @@ def run_complete_workflow(config: Config, logger: PipelineLogger, args: argparse
         ('segmentation', 'Single-cell Segmentation'),
         ('process_single_cell', 'Process Single-cell Data'),
         ('threshold_grouped_cells', 'Threshold Grouped Cells'),
+        ('measure_roi_area', 'Measure ROI Areas'),
         ('analysis', 'Analysis')
     ]
     
@@ -54,6 +55,7 @@ def run_complete_workflow(config: Config, logger: PipelineLogger, args: argparse
         stage_args.segmentation = False
         stage_args.process_single_cell = False
         stage_args.threshold_grouped_cells = False
+        stage_args.measure_roi_area = False
         stage_args.analysis = False
         stage_args.complete_workflow = False
         
@@ -132,7 +134,7 @@ def main():
                 
                 # Check if any stages are selected
                 stages_selected = any([args.data_selection, args.segmentation, args.process_single_cell,
-                                     args.threshold_grouped_cells, args.analysis, args.complete_workflow])
+                                     args.threshold_grouped_cells, args.measure_roi_area, args.analysis, args.complete_workflow])
                 
                 if not stages_selected:
                     # No stages selected, just return to menu (e.g., after setting directories)

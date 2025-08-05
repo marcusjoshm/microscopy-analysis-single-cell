@@ -148,6 +148,11 @@ Examples:
             help='Run threshold grouped cells (interactive ImageJ thresholding)'
         )
         parser.add_argument(
+            '--measure-roi-area',
+            action='store_true',
+            help='Run ROI area measurement (measure areas of ROIs in raw images)'
+        )
+        parser.add_argument(
             '--analysis',
             action='store_true',
             help='Run analysis (combine masks, create cell masks, export results)'
@@ -155,7 +160,7 @@ Examples:
         parser.add_argument(
             '--complete-workflow',
             action='store_true',
-            help='Run complete analysis workflow (all 5 modules)'
+            help='Run complete analysis workflow (all 6 modules)'
         )
         
         # Data selection arguments
@@ -291,7 +296,7 @@ Examples:
         # Check if any stage is already selected
         stage_flags = [
             args.data_selection, args.segmentation, args.process_single_cell,
-            args.threshold_grouped_cells, args.analysis, args.complete_workflow
+            args.threshold_grouped_cells, args.measure_roi_area, args.analysis, args.complete_workflow
         ]
         
         if any(stage_flags):
@@ -307,11 +312,12 @@ Examples:
         print(colorize("4. Single-cell Segmentation (Cellpose)", Colors.orange))
         print(colorize("5. Process Single-cell Data (tracking, resizing, extraction, grouping)", Colors.orange))
         print(colorize("6. Threshold Grouped Cells (interactive ImageJ thresholding)", Colors.orange))
-        print(colorize("7. Analysis (combine masks, create cell masks, export results)", Colors.orange))
-        print(colorize("8. Exit", Colors.red))
+        print(colorize("7. Measure ROI Areas (measure areas of ROIs in raw images)", Colors.orange))
+        print(colorize("8. Analysis (combine masks, create cell masks, export results)", Colors.orange))
+        print(colorize("9. Exit", Colors.red))
         
         # Get user choice
-        choice = input("Select an option (1-8): ").strip().lower()
+        choice = input("Select an option (1-9): ").strip().lower()
         
         # Update args based on choice
         if choice == "1":
@@ -352,7 +358,8 @@ Examples:
             print("2. Single-cell Segmentation (Option 4)")
             print("3. Process Single-cell Data (Option 5)")
             print("4. Threshold Grouped Cells (Option 6)")
-            print("5. Analysis (Option 7)")
+            print("5. Measure ROI Areas (Option 7)")
+            print("6. Analysis (Option 8)")
             print("="*60 + "\n")
             
             # Set all stages to run sequentially
@@ -360,6 +367,7 @@ Examples:
             args.segmentation = True
             args.process_single_cell = True
             args.threshold_grouped_cells = True
+            args.measure_roi_area = True
             args.analysis = True
             args.complete_workflow = True  # Flag to indicate sequential execution
         elif choice == "3":
@@ -371,12 +379,14 @@ Examples:
         elif choice == "6":
             args.threshold_grouped_cells = True
         elif choice == "7":
+            args.measure_roi_area = True
+        elif choice == "8":
             args.analysis = True
-        elif choice == "8" or choice == "q" or choice == "quit":
+        elif choice == "9" or choice == "q" or choice == "quit":
             print("Exiting.")
             return None  # Signal to exit
         else:
-            print("Invalid choice. Please enter a number between 1-8 or 'q' to quit.")
+            print("Invalid choice. Please enter a number between 1-9 or 'q' to quit.")
             return args  # Return current args to continue loop
         
         return args

@@ -16,6 +16,7 @@ def register_all_stages():
         SegmentationStage,
         ProcessSingleCellDataStage,
         ThresholdGroupedCellsStage,
+        MeasureROIAreaStage,
         AnalysisStage
     )
     
@@ -24,4 +25,5 @@ def register_all_stages():
     register_stage('segmentation', order=2)(SegmentationStage)
     register_stage('process_single_cell', order=3)(ProcessSingleCellDataStage)
     register_stage('threshold_grouped_cells', order=4)(ThresholdGroupedCellsStage)
-    register_stage('analysis', order=5)(AnalysisStage) 
+    register_stage('measure_roi_area', order=5)(MeasureROIAreaStage)
+    register_stage('analysis', order=6)(AnalysisStage) 

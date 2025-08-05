@@ -95,6 +95,9 @@ class Pipeline:
         if self.args.threshold_grouped_cells or self.args.complete_workflow:
             stages.append('threshold_grouped_cells')
             
+        if self.args.measure_roi_area or self.args.complete_workflow:
+            stages.append('measure_roi_area')
+            
         if self.args.analysis or self.args.complete_workflow:
             stages.append('analysis')
         
