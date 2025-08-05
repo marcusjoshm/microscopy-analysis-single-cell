@@ -9,15 +9,16 @@ This document provides step-by-step instructions for running our single cell ana
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Step 1: Remove Spaces from File Names](#step-1-remove-spaces-from-file-names)
-3. [Step 2: Activate the Python Environment](#step-2-activate-the-python-environment)
-4. [Step 3: Run the Analysis Workflow](#step-3-run-the-analysis-workflow)
-5. [Step 4: Data Analysis Selection](#step-4-data-analysis-selection)
-6. [Step 5: Cellpose Segmentation](#step-5-cellpose-segmentation)
-7. [Step 6: Otsu Thresholding](#step-6-otsu-thresholding)
-8. [Tips and Tricks](#Tips-and-Tricks)
-9. [Troubleshooting](#troubleshooting)
-10. [Technical Documentation](#technical-documentation)
+2. [Modular CLI System (New!)](#modular-cli-system-new)
+3. [Step 1: Remove Spaces from File Names](#step-1-remove-spaces-from-file-names)
+4. [Step 2: Activate the Python Environment](#step-2-activate-the-python-environment)
+5. [Step 3: Run the Analysis Workflow](#step-3-run-the-analysis-workflow)
+6. [Step 4: Data Analysis Selection](#step-4-data-analysis-selection)
+7. [Step 5: Cellpose Segmentation](#step-5-cellpose-segmentation)
+8. [Step 6: Otsu Thresholding](#step-6-otsu-thresholding)
+9. [Tips and Tricks](#Tips-and-Tricks)
+10. [Troubleshooting](#troubleshooting)
+11. [Technical Documentation](#technical-documentation)
 
 ## Getting Started
 
@@ -27,6 +28,133 @@ This workflow is designed to work seamlessly with data exported directly from LA
 
 > **Important:** Avoid using a `+` when naming files. It will cause the workflow to fail.
 > 
+## Modular CLI System (New!)
+
+We've introduced a new modular command-line interface that provides a more user-friendly experience. This system allows you to run individual workflow steps or the complete pipeline with an interactive menu.
+
+### Quick Start with Modular CLI
+
+1. **Activate the environment** (if not already activated):
+   ```bash
+   cd ~/microscopy-analysis-single-cell
+   source venv/bin/activate
+   ```
+
+2. **Run the modular interface**:
+   ```bash
+   python main.py
+   ```
+
+3. **You'll see the colorful ASCII header and interactive menu**:
+   ```
+      ███████╗ ██╗ ███╗   ██╗  ██████╗  ██╗      ███████╗      
+      ██╔════╝ ██║ ████╗  ██║ ██╔════╝  ██║      ██╔════╝      
+      ███████╗ ██║ ██╔██╗ ██║ ██║  ███╗ ██║      █████╗        
+      ╚════██║ ██║ ██║╚██╗██║ ██║   ██║ ██║      ██╔══╝        
+      ███████║ ██║ ██║ ╚████║ ╚██████╔╝ ███████╗ ███████╗      
+      ╚══════╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚══════╝ ╚══════╝      
+                                                               
+      ██████╗ ███████╗ ██╗      ██╗                            
+      ██╔═══╝ ██╔════╝ ██║      ██║                            
+      ██║     █████╗   ██║      ██║                            
+      ██║     ██╔══╝   ██║      ██║                            
+      ██████╗ ███████╗ ███████╗ ███████╗                       
+      ╚═════╝ ╚══════╝ ╚══════╝ ╚══════╝                       
+                                                               
+       █████╗  ███╗   ██╗  █████╗             
+      ██╔══██╗ ████╗  ██║ ██╔══██╗            
+      ███████║ ██╔██╗ ██║ ███████║            
+      ██╔══██║ ██║╚██╗██║ ██╔══██║            
+      ██║  ██║ ██║ ╚████║ ██║  ██║            
+      ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚═╝  ╚═╝            
+                                                                          
+      ██╗    ██╗   ██╗ ███████╗ ███████╗ ███████╗                         
+      ██║    ╚██╗ ██╔╝ ╚════██║ ██╔════╝ ██╔══██╗                         
+      ██║     ╚████╔╝     ██╔╝  █████╗   ██████╔╝                         
+      ██║      ╚██╔╝    ██╔╝    ██╔══╝   ██╔══██╗                         
+      ███████╗  ██║    ███████╗ ███████╗ ██║  ██║                         
+      ╚══════╝  ╚═╝    ╚══════╝ ╚══════╝ ╚═╝  ╚═╝                         
+                                                                          
+
+  🔬 Welcome Single Cell Analysis user! 🔬
+
+   MENU:
+   1. Set Input/Output Directories
+   2. Run Complete Workflow
+   3. Data Selection (conditions, regions, timepoints, channels)
+   4. Single-cell Segmentation (Cellpose)
+   5. Process Single-cell Data (tracking, resizing, extraction, grouping)
+   6. Threshold Grouped Cells (interactive ImageJ thresholding)
+   7. Analysis (combine masks, create cell masks, export results)
+   8. Exit
+   ```
+
+### Menu Options Explained
+
+#### Option 1: Set Input/Output Directories
+- Updates the configuration file with your input and output paths
+- Does not create any directories (only updates config)
+- Use this to set up your paths before running other options
+
+#### Option 2: Run Complete Workflow ⭐ **Recommended for New Users**
+- Runs all steps in sequence: 3 → 4 → 5 → 6 → 7
+- Handles interactive steps automatically
+- Perfect for running the entire analysis pipeline
+
+#### Option 3: Data Selection
+- Interactive selection of conditions, regions, timepoints, and channels
+- Creates the output directory structure
+- Prepares input data for analysis
+- **Required before running other workflow steps**
+
+#### Option 4: Single-cell Segmentation
+- Bins images for segmentation
+- Launches Cellpose and FIJI for interactive cell segmentation
+- **Requires data selection to be completed first**
+
+#### Option 5: Process Single-cell Data
+- Tracks ROIs across timepoints (if multiple timepoints)
+- Resizes ROIs to match original image dimensions
+- Duplicates ROIs for analysis channels
+- Extracts individual cells
+- **Requires data selection to be completed first**
+
+#### Option 6: Threshold Grouped Cells
+- Groups cells by expression level
+- Interactive ImageJ thresholding for grouped cells
+- **Requires data selection to be completed first**
+
+#### Option 7: Analysis
+- Combines masks from different groups
+- Creates individual cell masks
+- Analyzes cell features
+- Includes group metadata in results
+- **Requires data selection to be completed first**
+
+### Example Workflow
+
+**For a complete analysis:**
+1. Choose Option 2 (Run Complete Workflow)
+2. Follow the prompts for data selection
+3. Complete the interactive segmentation step
+4. Wait for all processing to complete
+
+**For step-by-step analysis:**
+1. Choose Option 1 to set directories
+2. Choose Option 3 for data selection
+3. Choose Option 4 for segmentation
+4. Choose Option 5 for cell processing
+5. Choose Option 6 for thresholding
+6. Choose Option 7 for analysis
+
+### Benefits of the Modular System
+
+- **User-friendly**: Clear menu with color-coded options
+- **Flexible**: Run individual steps or complete workflow
+- **Error recovery**: Returns to menu after errors
+- **Progress tracking**: Shows which step is currently running
+- **Interactive support**: Proper handling of user input
+
 ### Opening Terminal
 
 1. Press Command + Space to open Spotlight Search
@@ -108,7 +236,24 @@ Example of how your prompt should look:
 
 ## Step 3: Run the Analysis Workflow
 
-Now you'll run the single cell analysis script:
+You have two options for running the analysis workflow:
+
+### Option A: New Modular CLI (Recommended) ⭐
+
+1. **Run the modular interface**:
+   ```bash
+   python main.py
+   ```
+
+2. **Choose Option 2 (Run Complete Workflow)** from the menu
+
+3. **Follow the interactive prompts** for data selection and segmentation
+
+This is the recommended approach for new users as it provides a more user-friendly experience.
+
+### Option B: Original Workflow
+
+If you prefer the original command-line approach:
 
 1. Copy and paste the following into Terminal:
 
