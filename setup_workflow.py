@@ -23,7 +23,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 
 # Import our path detection module
-from scripts.path_detection import PathDetector, detect_and_validate_paths
+from src.python.setup.path_detection import PathDetector, detect_and_validate_paths
 
 # Set up logging
 logging.basicConfig(

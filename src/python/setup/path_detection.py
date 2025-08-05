@@ -455,4 +455,4 @@ if __name__ == "__main__":
     print("\nDetection Results:")
     for software, path in detected_paths.items():
         status = "✓" if validation_results.get(software, False) else "✗"
-        print(f"{status} {software}: {path or 'Not found'}") 
+        print(f"{status} {software}: {path or 'Not found'}")
