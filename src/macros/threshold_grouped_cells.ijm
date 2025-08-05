@@ -5,7 +5,6 @@
 #@ String input_dir
 #@ String output_dir
 #@ String flag_file
-#@ String channel_filter_logic
 #@ Boolean auto_close
 
 // Enable batch mode for better performance
@@ -18,14 +17,10 @@ if (input_dir == "") {
 if (output_dir == "") {
     exit("Error: Output directory not specified");
 }
-if (flag_file == "") {
-    exit("Error: Flag file path not specified");
-}
 
 print("=== Threshold Grouped Cells Macro Started ===");
 print("Input directory: " + input_dir);
 print("Output directory: " + output_dir);
-print("Flag file: " + flag_file);
 print("Auto close: " + auto_close);
 
 // Helper function to join array elements with a separator
@@ -39,24 +34,46 @@ function joinArray(arr, separator) {
     return s;
 }
 
+// Helper function to ensure proper path construction
+function ensurePath(path) {
+    // Remove any double slashes and ensure proper path format
+    path = replace(path, "//", "/");
+    // Ensure no trailing slash for directory creation
+    if (endsWith(path, "/")) {
+        path = substring(path, 0, lengthOf(path) - 1);
+    }
+    return path;
+}
+
 // Configuration from parameters
-cellsDir = input_dir + "/";
-outputDir = output_dir + "/";
+cellsDir = ensurePath(input_dir + "/");
+outputDir = ensurePath(output_dir + "/");
 needMoreBinsFlag = false;
+binFileCount = 0;
 
 print("cellsDir: " + cellsDir);
-
-// Ensure trailing slashes for path concatenation
-if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
-if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
-
-// Remove any double slashes that might occur
-cellsDir = replace(cellsDir, "//", "/");
-outputDir = replace(outputDir, "//", "/");
+print("outputDir: " + outputDir);
 
 // Get list of condition directories in cellsDir
+print("Debug - About to call getFileList on: " + cellsDir);
+print("Debug - Directory exists: " + File.exists(cellsDir));
+print("Debug - Is directory: " + File.isDirectory(cellsDir));
+
 conditionDirs = getFileList(cellsDir);
 print("Found condition directories: " + joinArray(conditionDirs, ", "));
+print("Debug - cellsDir path: " + cellsDir);
+print("Debug - conditionDirs array length: " + conditionDirs.length);
+
+// Check each condition directory individually
+for (debug_i = 0; debug_i < conditionDirs.length; debug_i++) {
+    debug_condition = conditionDirs[debug_i];
+    debug_path = cellsDir + debug_condition;
+    print("Debug - Condition " + debug_i + ": '" + debug_condition + "'");
+    print("Debug - Full path: '" + debug_path + "'");
+    print("Debug - Exists: " + File.exists(debug_path));
+    print("Debug - Is directory: " + File.isDirectory(debug_path));
+    print("Debug - Starts with dot: " + startsWith(debug_condition, "."));
+}
 
 // Skip initial image preview - proceed directly to thresholding
 print("Proceeding directly to thresholding without preview.");
@@ -65,21 +82,66 @@ print("Proceeding directly to thresholding without preview.");
 for (d = 0; d < conditionDirs.length; d++) {
     conditionName = conditionDirs[d];
     
+    // Remove trailing slash from conditionName for directory checking
+    cleanConditionName = conditionName;
+    if (endsWith(cleanConditionName, "/")) {
+        cleanConditionName = substring(cleanConditionName, 0, lengthOf(cleanConditionName) - 1);
+    }
+    
+    print("Debug - conditionName: " + conditionName);
+    print("Debug - cleanConditionName: " + cleanConditionName);
+    print("Debug - cellsDir: " + cellsDir);
+    
+    // Ensure cellsDir has a trailing slash for proper path construction
+    if (!endsWith(cellsDir, "/")) {
+        cellsDir = cellsDir + "/";
+    }
+    
+    print("Debug - cellsDir with trailing slash: " + cellsDir);
+    print("Debug - cellsDir + cleanConditionName: " + cellsDir + cleanConditionName);
+    print("Debug - File.exists(cellsDir + cleanConditionName): " + File.exists(cellsDir + cleanConditionName));
+    print("Debug - File.isDirectory(cellsDir + cleanConditionName): " + File.isDirectory(cellsDir + cleanConditionName));
+    
     // Skip non-directories and hidden files
-    if (!File.isDirectory(cellsDir + conditionName) || startsWith(conditionName, ".")) {
+    if (!File.isDirectory(cellsDir + cleanConditionName) || startsWith(cleanConditionName, ".")) {
+        print("Debug - Skipping " + cleanConditionName + " (not a directory or hidden)");
         continue;
     }
     
-    conditionPath = cellsDir + conditionName;
-    // Ensure trailing slash
-    if (!endsWith(conditionPath, "/")) conditionPath = conditionPath + "/";
-    
+    conditionPath = cellsDir + cleanConditionName + "/";
+    // Clean up any double slashes but keep trailing slash
+    conditionPath = replace(conditionPath, "//", "/");
     print("Processing condition: " + conditionPath);
+    print("Debug - conditionPath for getFileList: " + conditionPath);
     
     // Get list of region/channel/timepoint subdirectories within the condition folder
+    print("Debug - About to call getFileList on condition: " + conditionPath);
+    print("Debug - Condition path exists: " + File.exists(conditionPath));
+    print("Debug - Condition is directory: " + File.isDirectory(conditionPath));
+    
     regionDirs = getFileList(conditionPath);
+    print("Debug - regionDirs array length: " + regionDirs.length);
+    print("Debug - regionDirs content: " + joinArray(regionDirs, ", "));
+    
+    // Check each region directory individually
+    for (debug_r = 0; debug_r < regionDirs.length; debug_r++) {
+        debug_region = regionDirs[debug_r];
+        debug_region_path = conditionPath + debug_region;
+        print("Debug - Region " + debug_r + ": '" + debug_region + "'");
+        print("Debug - Region full path: '" + debug_region_path + "'");
+        print("Debug - Region exists: " + File.exists(debug_region_path));
+        print("Debug - Region is directory: " + File.isDirectory(debug_region_path));
+        print("Debug - Region starts with dot: " + startsWith(debug_region, "."));
+    }
+    
     if (regionDirs.length == 0) {
         print("No subdirectories found in " + conditionName);
+        print("Debug - Trying to list directory contents manually...");
+        // Try alternative approach to list directory contents
+        testPath = conditionPath;
+        if (!endsWith(testPath, "/")) testPath = testPath + "/";
+        print("Debug - Testing path: " + testPath);
+        print("Debug - Directory exists: " + File.exists(testPath));
         continue;
     }
     
@@ -93,13 +155,15 @@ for (d = 0; d < conditionDirs.length; d++) {
             continue;
         }
         
+        print("Processing region: " + regionName);
+        
         // Channel filtering logic will be embedded here by Python script
         // CHANNEL_FILTER_PLACEHOLDER
+        // Temporarily disabled for debugging - no channel filtering applied
         
-        regionPath = conditionPath + regionName;
-        // Ensure trailing slash
-        if (!endsWith(regionPath, "/")) regionPath = regionPath + "/";
-        
+        regionPath = conditionPath + regionName + "/";
+        // Clean up any double slashes but keep trailing slash
+        regionPath = replace(regionPath, "//", "/");
         print("Processing region folder: " + regionPath);
         
         // Get list of files in the region folder
@@ -110,13 +174,16 @@ for (d = 0; d < conditionDirs.length; d++) {
         }
         
         print("Found files in " + regionName + ": " + joinArray(files, ", "));
+        print("Looking for files with '_bin_' pattern...");
         
         for (f = 0; f < files.length; f++) {
             fileName = files[f];
             
             // Process only bin TIFF files (skip CSV and txt files)
             if (endsWith(fileName, ".tif") && indexOf(fileName, "_bin_") >= 0) {
+                binFileCount++;
                 imagePath = regionPath + fileName;
+                print("Found bin file: " + fileName);
                 print("Opening file: " + imagePath);
                 
                 // Open the image
@@ -190,17 +257,136 @@ for (d = 0; d < conditionDirs.length; d++) {
                     run("Convert to Mask");
                 }
                 
-                // Create matching output directory structure
-                outFolder = outputDir + conditionName + "/" + regionName + "/";
+                // Create matching output directory structure with proper path handling
+                // Ensure we don't have double slashes and proper path construction
+                outFolder = outputDir;
+                if (!endsWith(outFolder, "/")) outFolder = outFolder + "/";
+                outFolder = outFolder + conditionName + "/";
+                if (!endsWith(outFolder, "/")) outFolder = outFolder + "/";
+                outFolder = outFolder + regionName + "/";
+                // Clean up any double slashes
+                outFolder = replace(outFolder, "//", "/");
+                
+                // Create directories step by step since ImageJ can't create nested paths
+                // First create the condition directory
+                conditionOutputDir = outputDir;
+                if (!endsWith(conditionOutputDir, "/")) conditionOutputDir = conditionOutputDir + "/";
+                conditionOutputDir = conditionOutputDir + conditionName;
+                if (endsWith(conditionOutputDir, "/")) {
+                    conditionOutputDir = substring(conditionOutputDir, 0, lengthOf(conditionOutputDir) - 1);
+                }
+                
+                print("Step 1: Creating condition directory: " + conditionOutputDir);
+                if (!File.exists(conditionOutputDir)) {
+                    File.makeDirectory(conditionOutputDir);
+                    if (File.exists(conditionOutputDir)) {
+                        print("Successfully created condition directory");
+                    } else {
+                        print("Failed to create condition directory");
+                    }
+                } else {
+                    print("Condition directory already exists");
+                }
+                
+                // Then create the region directory
+                print("Step 2: Creating region directory: " + outFolder);
                 if (!File.exists(outFolder)) {
                     File.makeDirectory(outFolder);
-                    print("Created output directory: " + outFolder);
+                    if (File.exists(outFolder)) {
+                        print("Successfully created region directory");
+                    } else {
+                        print("Failed to create region directory");
+                    }
+                } else {
+                    print("Region directory already exists");
                 }
                 
                 // Save the processed image with "MASK_" prepended
                 outputPath = outFolder + "MASK_" + fileName;
+                
+                // Add debug information before saving
+                print("Attempting to save to: " + outputPath);
+                print("Output path length: " + lengthOf(outputPath));
+                print("Parent directory exists: " + File.exists(outFolder));
+                print("Parent is directory: " + File.isDirectory(outFolder));
+                
+                // Test write permissions in the directory
+                testFilePath = outFolder + "test_write.tmp";
+                File.saveString("test", testFilePath);
+                if (File.exists(testFilePath)) {
+                    File.delete(testFilePath);
+                    print("Directory write test: SUCCESS");
+                } else {
+                    print("Directory write test: FAILED - may not be writable");
+                }
+                
+                // Try to save the image with error handling
+                saveSuccess = false;
+                
+                // First attempt: Normal save
+                print("Attempting primary save method...");
+                // Use try/catch equivalent by checking if save worked
                 saveAs("Tiff", outputPath);
-                print("Saved: " + outputPath);
+                if (File.exists(outputPath)) {
+                    print("Primary save successful: " + outputPath);
+                    saveSuccess = true;
+                } else {
+                    print("Primary save failed - file not found after save attempt");
+                    
+                    // Second attempt: Try saving with shorter filename
+                    print("Attempting fallback save with shorter filename...");
+                    shortFileName = "MASK_" + d + "_" + t + "_" + f + ".tif";
+                    alternativePath = outFolder + shortFileName;
+                    print("Alternative path: " + alternativePath);
+                    
+                    saveAs("Tiff", alternativePath);
+                    if (File.exists(alternativePath)) {
+                        print("Fallback save successful: " + alternativePath);
+                        saveSuccess = true;
+                    } else {
+                        print("Fallback save also failed");
+                        
+                        // Third attempt: Save to local temp directory first
+                        print("Attempting save to local temp directory...");
+                        tempDir = "/tmp/imagej_temp/";
+                        if (!File.exists(tempDir)) {
+                            File.makeDirectory(tempDir);
+                        }
+                        tempFileName = "MASK_temp_" + d + "_" + t + "_" + f + ".tif";
+                        tempPath = tempDir + tempFileName;
+                        print("Temp path: " + tempPath);
+                        
+                        saveAs("Tiff", tempPath);
+                        if (File.exists(tempPath)) {
+                            print("Temp save successful: " + tempPath);
+                            print("Note: File saved to temp location due to path issues");
+                            print("Manual copy needed: " + tempPath + " -> " + outputPath);
+                            saveSuccess = true;
+                        } else {
+                            // Fourth attempt: Save to emergency directory with short names
+                            print("Attempting emergency save to simplified path...");
+                            emergencyDir = outputDir + "/emergency_saves/";
+                            if (!File.exists(emergencyDir)) {
+                                File.makeDirectory(emergencyDir);
+                            }
+                            emergencyPath = emergencyDir + "MASK_" + d + "_" + t + "_" + f + ".tif";
+                            emergencyPath = replace(emergencyPath, "//", "/");
+                            print("Emergency path: " + emergencyPath);
+                            
+                            saveAs("Tiff", emergencyPath);
+                            if (File.exists(emergencyPath)) {
+                                print("Emergency save successful: " + emergencyPath);
+                                saveSuccess = true;
+                            } else {
+                                print("All save attempts failed!");
+                            }
+                        }
+                    }
+                }
+                
+                if (!saveSuccess) {
+                    print("ERROR: Could not save file anywhere. Skipping this image.");
+                }
                 
                 // Close the image
                 close();
@@ -210,9 +396,10 @@ for (d = 0; d < conditionDirs.length; d++) {
 }
 
 print("Thresholding of grouped cells completed.");
+print("Total bin files processed: " + binFileCount);
 print("=== Threshold Grouped Cells Macro Completed ===");
 
 // Auto-close ImageJ if requested
 if (auto_close) {
     eval("script", "System.exit(0);");
-} 
+}
