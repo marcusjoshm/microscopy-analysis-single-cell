@@ -41,64 +41,78 @@ def main():
             print()
         
         while True:
-            # Parse command line arguments (without validation for menu)
-            cli = create_cli()
-            args = cli.parser.parse_args()
-            
-            # Handle interactive mode or show menu if no processing options selected
-            if args.interactive or not any([args.data_selection, args.segmentation, args.process_single_cell,
-                                          args.threshold_grouped_cells, args.analysis, args.complete_workflow]):
-                args = cli.show_interactive_menu(args)
-                if args is None:  # User chose to exit
-                    print("Goodbye!")
-                    return 0
-            
-            # Now validate arguments after menu processing
             try:
-                cli._validate_args(args)
-            except CLIError as e:
-                print(f"CLI Error: {e}")
+                # Parse command line arguments each iteration
+                cli = create_cli()
+                args = cli.parser.parse_args()
+                
+                # Handle interactive mode or show menu if no processing options selected
+                if args.interactive or not any([args.data_selection, args.segmentation, args.process_single_cell,
+                                              args.threshold_grouped_cells, args.analysis, args.complete_workflow]):
+                    args = cli.show_interactive_menu(args)
+                    if args is None:  # User chose to exit
+                        print("Goodbye!")
+                        return 0
+                
+                # Now validate arguments after menu processing
+                try:
+                    cli._validate_args(args)
+                except CLIError as e:
+                    print(f"CLI Error: {e}")
+                    print("Press Enter to return to main menu...")
+                    input()
+                    continue  # Return to menu
+                
+                # Create logger
+                log_level = "DEBUG" if args.verbose else "INFO"
+                logger = PipelineLogger(args.output, log_level=log_level)
+                
+                # Create and run pipeline
+                pipeline = Pipeline(config, logger, args)
+                success = pipeline.run()
+                
+                if success:
+                    print("\n" + "="*60)
+                    print("Pipeline completed successfully!")
+                    print("="*60)
+                else:
+                    print("\n" + "="*60)
+                    print("Pipeline completed with errors. Check logs for details.")
+                    print("="*60)
+                
+                # Check if this was an interactive module
+                interactive_modules = ['segmentation', 'threshold_grouped_cells']
+                is_interactive = any(getattr(args, module, False) for module in interactive_modules)
+                
+                if is_interactive:
+                    # For interactive modules, show completion message
+                    print("\n" + "="*60)
+                    print("Interactive module completed. Returning to main menu...")
+                    print("="*60 + "\n")
+                    
+                    # Small delay to let user read the completion message
+                    import time
+                    time.sleep(1)
+                else:
+                    # For non-interactive modules, show completion message
+                    print("\n" + "="*60)
+                    print("Pipeline completed. Returning to main menu...")
+                    print("="*60 + "\n")
+                    
+                    # Small delay to let user read the output
+                    import time
+                    time.sleep(2)
+                
+            except KeyboardInterrupt:
+                print("\nPipeline interrupted by user")
+                return 1
+            except Exception as e:
+                print(f"Unexpected error: {e}")
+                import traceback
+                traceback.print_exc()
+                print("\nPress Enter to return to main menu...")
+                input()
                 continue  # Return to menu
-            
-            # Create logger
-            log_level = "DEBUG" if args.verbose else "INFO"
-            logger = PipelineLogger(args.output, log_level=log_level)
-            
-            # Create and run pipeline
-            pipeline = Pipeline(config, logger, args)
-            success = pipeline.run()
-            
-            if success:
-                print("\n" + "="*60)
-                print("Pipeline completed successfully!")
-                print("="*60)
-            else:
-                print("\n" + "="*60)
-                print("Pipeline completed with errors. Check logs for details.")
-                print("="*60)
-            
-            # Check if this was an interactive module
-            interactive_modules = ['segmentation', 'threshold_grouped_cells']
-            is_interactive = any(getattr(args, module, False) for module in interactive_modules)
-            
-            if is_interactive:
-                # For interactive modules, show completion message
-                print("\n" + "="*60)
-                print("Interactive module completed. Returning to main menu...")
-                print("="*60 + "\n")
-                
-                # Small delay to let user read the completion message
-                import time
-                time.sleep(1)
-            else:
-                # For non-interactive modules, show completion message
-                print("\n" + "="*60)
-                print("Pipeline completed. Returning to main menu...")
-                print("="*60 + "\n")
-                
-                # Small delay to let user read the output
-                import time
-                time.sleep(2)
             
     except KeyboardInterrupt:
         print("\nPipeline interrupted by user")

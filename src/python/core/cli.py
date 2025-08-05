@@ -271,12 +271,31 @@ Examples:
             # Don't raise error here - let the menu handle it
             pass
         
+        # Load config to get default directories
+        try:
+            from ..modules.directory_setup import load_config
+            config_path = getattr(args, 'config', 'config.json')
+            config = load_config(config_path)
+            default_input = config.get('directories', {}).get('input', '')
+            default_output = config.get('directories', {}).get('output', '')
+        except Exception:
+            default_input = ''
+            default_output = ''
+        
         # Check if input/output directories are provided (only after menu processing)
         if not args.input and not args.interactive:
-            raise CLIError("Input directory is required unless using --interactive")
+            if default_input:
+                args.input = default_input
+                print(f"Using default input directory: {default_input}")
+            else:
+                raise CLIError("Input directory is required unless using --interactive")
         
         if not args.output and not args.interactive:
-            raise CLIError("Output directory is required unless using --interactive")
+            if default_output:
+                args.output = default_output
+                print(f"Using default output directory: {default_output}")
+            else:
+                raise CLIError("Output directory is required unless using --interactive")
     
     def show_interactive_menu(self, args: argparse.Namespace) -> argparse.Namespace:
         """

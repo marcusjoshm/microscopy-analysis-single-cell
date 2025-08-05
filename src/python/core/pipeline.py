@@ -83,13 +83,19 @@ class Pipeline:
         stages = []
         
         # Add stages based on flags
-        if self.args.preprocess or self.args.complete:
-            stages.append('preprocessing')
+        if self.args.data_selection or self.args.complete_workflow:
+            stages.append('data_selection')
             
-        if self.args.segment or self.args.complete:
+        if self.args.segmentation or self.args.complete_workflow:
             stages.append('segmentation')
             
-        if self.args.analyze or self.args.complete:
+        if self.args.process_single_cell or self.args.complete_workflow:
+            stages.append('process_single_cell')
+            
+        if self.args.threshold_grouped_cells or self.args.complete_workflow:
+            stages.append('threshold_grouped_cells')
+            
+        if self.args.analysis or self.args.complete_workflow:
             stages.append('analysis')
         
         # Filter out skipped stages
