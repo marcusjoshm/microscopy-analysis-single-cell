@@ -305,14 +305,14 @@ Examples:
         # Show menu
         show_header()
         print("")
-        print(colorize("MENU:", Colors.bold))
+        # MENU:
         print(colorize("1. Set Input/Output Directories", Colors.green))
         print(colorize("2. Run Complete Workflow", Colors.yellow))
         print(colorize("3. Data Selection (conditions, regions, timepoints, channels)", Colors.orange))
         print(colorize("4. Single-cell Segmentation (Cellpose)", Colors.orange))
         print(colorize("5. Process Single-cell Data (tracking, resizing, extraction, grouping)", Colors.orange))
         print(colorize("6. Threshold Grouped Cells (interactive ImageJ thresholding)", Colors.orange))
-        print(colorize("7. Measure ROI Areas (measure areas of ROIs in raw images)", Colors.orange))
+        print(colorize("7. Measure Cell Area (measure areas from single-cell ROIs)", Colors.orange))
         print(colorize("8. Analysis (combine masks, create cell masks, export results)", Colors.orange))
         print(colorize("9. Exit", Colors.red))
         
