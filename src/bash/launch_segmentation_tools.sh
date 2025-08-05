@@ -3,7 +3,7 @@
 
 # Get the script's directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-WORKSPACE_DIR="$(dirname "$SCRIPT_DIR")"
+WORKSPACE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 # Path to Cellpose virtual environment
 CELLPOSE_ENV="$WORKSPACE_DIR/cellpose_venv"

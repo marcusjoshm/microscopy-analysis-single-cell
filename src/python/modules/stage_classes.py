@@ -79,6 +79,11 @@ class DataSelectionStage(StageBase):
             self.logger.info("Saving data selections...")
             self._save_selections_to_config()
             
+            # Step 6: Copy selected files to output
+            self.logger.info("Copying selected files to output directory...")
+            if not self._copy_selected_files():
+                return False
+            
             self.logger.info("Data Selection Stage completed successfully")
             return True
             
@@ -93,6 +98,8 @@ class DataSelectionStage(StageBase):
     def _setup_output_structure(self) -> bool:
         """Set up the output directory structure using the setup_output_structure.sh script."""
         try:
+            self.logger.info("Starting output directory structure setup...")
+            
             # Use the setup_output_structure.sh script
             script_path = Path("src/bash/setup_output_structure.sh")
             if not script_path.exists():
@@ -102,7 +109,9 @@ class DataSelectionStage(StageBase):
             # Make sure the script is executable
             script_path.chmod(0o755)
             
-            # Run the script
+            self.logger.info(f"Running setup_output_structure.sh with input: {self.input_dir}, output: {self.output_dir}")
+            
+            # Run the script to create directory structure (no file copying yet)
             result = subprocess.run([str(script_path), str(self.input_dir), str(self.output_dir)], 
                                   capture_output=True, text=True)
             
@@ -118,11 +127,129 @@ class DataSelectionStage(StageBase):
             self.logger.error(f"Error setting up output structure: {e}")
             return False
     
+    def _copy_selected_files(self) -> bool:
+        """Copy only the selected files to the output directory after data selection."""
+        try:
+            self.logger.info("Copying selected files to output directory...")
+            
+            # Use the instance variables that were set during interactive selection
+            selected_conditions = self.selected_conditions
+            selected_timepoints = self.selected_timepoints
+            selected_regions = self.selected_regions
+            
+            self.logger.info(f"Selected conditions: {selected_conditions}")
+            self.logger.info(f"Selected timepoints: {selected_timepoints}")
+            self.logger.info(f"Selected regions: {selected_regions}")
+            
+            if not selected_conditions:
+                self.logger.warning("No conditions selected, skipping file copy")
+                return True
+            
+            # Get directory timepoints for mapping
+            directory_timepoints = self.experiment_metadata.get('directory_timepoints', [])
+            self.logger.info(f"Available directory timepoints: {directory_timepoints}")
+            
+            total_copied = 0
+            
+            for condition in selected_conditions:
+                condition_input_dir = self.input_dir / condition
+                condition_output_dir = self.output_dir / "raw_data" / condition
+                
+                self.logger.info(f"Processing condition: {condition}")
+                self.logger.info(f"Input directory: {condition_input_dir}")
+                self.logger.info(f"Output directory: {condition_output_dir}")
+                
+                if not condition_input_dir.exists():
+                    self.logger.warning(f"Condition directory not found: {condition_input_dir}")
+                    continue
+                
+                # Create condition directory in output
+                condition_output_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Check what's in the condition directory
+                condition_items = list(condition_input_dir.iterdir())
+                self.logger.info(f"Items in condition directory: {[item.name for item in condition_items]}")
+                
+                # Copy files based on selections
+                if selected_timepoints and directory_timepoints:
+                    # Copy specific timepoints - map filename timepoints to directory timepoints
+                    for timepoint in selected_timepoints:
+                        # Find corresponding directory timepoint
+                        # For now, assume t00 maps to timepoint_1, t01 to timepoint_2, etc.
+                        # This can be made more sophisticated if needed
+                        timepoint_number = timepoint.replace('t', '')
+                        directory_timepoint = f"timepoint_{int(timepoint_number) + 1}"
+                        
+                        if directory_timepoint in directory_timepoints:
+                            timepoint_input_dir = condition_input_dir / directory_timepoint
+                            timepoint_output_dir = condition_output_dir / directory_timepoint
+                            
+                            self.logger.info(f"Mapping {timepoint} to directory {directory_timepoint}")
+                            self.logger.info(f"Timepoint input directory: {timepoint_input_dir}")
+                            
+                            if timepoint_input_dir.exists():
+                                timepoint_output_dir.mkdir(parents=True, exist_ok=True)
+                                
+                                # Copy TIF files from this timepoint
+                                tif_files = list(timepoint_input_dir.glob("*.tif"))
+                                self.logger.info(f"Found {len(tif_files)} TIF files in {directory_timepoint}")
+                                
+                                copied_in_timepoint = 0
+                                for tif_file in tif_files:
+                                    # Check if this file matches selected regions (if specified)
+                                    if selected_regions:
+                                        filename = tif_file.stem
+                                        if not any(region in filename for region in selected_regions):
+                                            self.logger.debug(f"Skipping file {filename} - doesn't match selected regions")
+                                            continue
+                                    
+                                    # Copy the file
+                                    output_file = timepoint_output_dir / tif_file.name
+                                    shutil.copy2(tif_file, output_file)
+                                    total_copied += 1
+                                    copied_in_timepoint += 1
+                                    self.logger.debug(f"Copied: {tif_file.name}")
+                                    
+                                self.logger.info(f"Copied {copied_in_timepoint} files from {condition}/{directory_timepoint}")
+                            else:
+                                self.logger.warning(f"Timepoint directory not found: {timepoint_input_dir}")
+                        else:
+                            self.logger.warning(f"No directory timepoint found for {timepoint}")
+                else:
+                    # Copy all TIF files from condition directory
+                    tif_files = list(condition_input_dir.glob("*.tif"))
+                    self.logger.info(f"Found {len(tif_files)} TIF files directly in condition directory")
+                    
+                    copied_in_condition = 0
+                    for tif_file in tif_files:
+                        # Check if this file matches selected regions (if specified)
+                        if selected_regions:
+                            filename = tif_file.stem
+                            if not any(region in filename for region in selected_regions):
+                                self.logger.debug(f"Skipping file {filename} - doesn't match selected regions")
+                                continue
+                        
+                        # Copy the file
+                        output_file = condition_output_dir / tif_file.name
+                        shutil.copy2(tif_file, output_file)
+                        total_copied += 1
+                        copied_in_condition += 1
+                        self.logger.debug(f"Copied: {tif_file.name}")
+                    
+                    self.logger.info(f"Copied {copied_in_condition} files from {condition}")
+            
+            self.logger.info(f"File copy completed. Total files copied: {total_copied}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error copying selected files: {e}")
+            return False
+    
     def _prepare_input_structure(self, input_dir: str) -> bool:
         """Prepare input directory structure using the prepare_input_structure.sh script."""
         try:
             input_path = Path(input_dir)
-            self.logger.info(f"Preparing input directory structure: {input_path}")
+            self.logger.info(f"Starting input directory structure preparation: {input_path}")
             
             # Use the prepare_input_structure.sh script
             script_path = Path("src/bash/prepare_input_structure.sh")
@@ -132,6 +259,8 @@ class DataSelectionStage(StageBase):
             
             # Make sure the script is executable
             script_path.chmod(0o755)
+            
+            self.logger.info(f"Running prepare_input_structure.sh with input: {input_path}")
             
             # Run the script
             result = subprocess.run([str(script_path), str(input_path)], 
@@ -198,7 +327,8 @@ class DataSelectionStage(StageBase):
                 'timepoints': set(),
                 'channels': set(),
                 'region_to_channels': {},
-                'datatype_inferred': 'multi_timepoint'
+                'datatype_inferred': 'multi_timepoint',
+                'directory_timepoints': set()  # Track directory-based timepoints separately
             }
             
             self.logger.info(f"Scanning input directory: {input_path}")
@@ -223,19 +353,64 @@ class DataSelectionStage(StageBase):
                 condition_name = item.name
                 metadata['conditions'].append(condition_name)
                 
-                # Count TIF files in this condition
-                tif_files = list(item.glob("**/*.tif"))
-                self.logger.info(f"Found {len(tif_files)} TIF files in condition '{condition_name}'")
+                self.logger.info(f"Processing condition: {condition_name}")
+                
+                # Use a more efficient approach to find TIF files
+                # First, try to find TIF files directly in the condition directory
+                tif_files = []
+                
+                # Check if there are TIF files directly in the condition directory
+                direct_tifs = list(item.glob("*.tif"))
+                if direct_tifs:
+                    self.logger.info(f"Found {len(direct_tifs)} TIF files directly in condition '{condition_name}'")
+                    tif_files.extend(direct_tifs)
+                
+                # If no direct TIF files, check one level down for timepoint directories
+                if not direct_tifs:
+                    timepoint_dirs = [d for d in item.iterdir() if d.is_dir()]
+                    self.logger.info(f"Found {len(timepoint_dirs)} subdirectories in condition '{condition_name}': {[d.name for d in timepoint_dirs]}")
+                    
+                    for timepoint_dir in timepoint_dirs:
+                        timepoint_name = timepoint_dir.name
+                        timepoint_tifs = list(timepoint_dir.glob("*.tif"))
+                        if timepoint_tifs:
+                            self.logger.info(f"Found {len(timepoint_tifs)} TIF files in {timepoint_name}")
+                            tif_files.extend(timepoint_tifs)
+                            
+                            # Track directory-based timepoints separately (for file copying)
+                            # Check if it's a timepoint directory (timepoint_1, timepoint_2, etc.)
+                            if timepoint_name.startswith('timepoint_'):
+                                metadata['directory_timepoints'].add(timepoint_name)
+                            # Also check for other timepoint patterns
+                            elif re.match(r't[0-9]+', timepoint_name):
+                                metadata['directory_timepoints'].add(timepoint_name)
+                
+                # If still no TIF files, do a limited recursive search (max depth 3)
+                if not tif_files:
+                    self.logger.info(f"No TIF files found in immediate subdirectories, doing limited recursive search...")
+                    for depth in range(1, 4):  # Limit to 3 levels deep
+                        pattern = "*/" * depth + "*.tif"
+                        found_tifs = list(item.glob(pattern))
+                        if found_tifs:
+                            self.logger.info(f"Found {len(found_tifs)} TIF files at depth {depth}")
+                            tif_files.extend(found_tifs)
+                            break  # Stop at first depth with files
+                
+                self.logger.info(f"Total TIF files found in condition '{condition_name}': {len(tif_files)}")
                 
                 if not tif_files:
                     self.logger.warning(f"No TIF files found in condition '{condition_name}'")
                     continue
                 
-                # Extract metadata from filenames
-                for tif_file in tif_files:
+                # Extract metadata from filenames (limit to first 100 files to avoid excessive processing)
+                files_to_process = tif_files[:100] if len(tif_files) > 100 else tif_files
+                if len(tif_files) > 100:
+                    self.logger.info(f"Processing first 100 files out of {len(tif_files)} total files for metadata extraction")
+                
+                for tif_file in files_to_process:
                     filename = tif_file.name
                     
-                    # Extract timepoint
+                    # Extract timepoint from filename (for selection interface)
                     timepoint_match = re.search(r't([0-9]+)', filename)
                     if timepoint_match:
                         timepoint = f"t{timepoint_match.group(1)}"
@@ -261,6 +436,7 @@ class DataSelectionStage(StageBase):
             metadata['regions'] = sorted(list(metadata['regions']))
             metadata['timepoints'] = sorted(list(metadata['timepoints']))
             metadata['channels'] = sorted(list(metadata['channels']))
+            metadata['directory_timepoints'] = sorted(list(metadata['directory_timepoints']))
             
             # Infer datatype based on timepoints
             if len(metadata['timepoints']) <= 1:
@@ -270,6 +446,7 @@ class DataSelectionStage(StageBase):
             
             self.experiment_metadata = metadata
             self.logger.info(f"Extracted metadata: {metadata}")
+            self.logger.info(f"Directory timepoints (for file copying): {metadata['directory_timepoints']}")
             return True
             
         except Exception as e:
@@ -623,13 +800,18 @@ class SegmentationStage(StageBase):
             seg_script_path = Path(seg_script)
             seg_script_path.chmod(0o755)
             
+            # Run the script interactively (not capturing output to allow user interaction)
+            self.logger.info("Starting interactive segmentation session...")
+            self.logger.info("The script will open Cellpose and ImageJ for manual segmentation.")
+            self.logger.info("Please complete your segmentation work and press Enter when done.")
+            
+            # Run interactively without capturing output
             result = subprocess.run([seg_script, preprocessed_dir], 
-                                  capture_output=True, text=True)
+                                  stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
             if result.returncode != 0:
-                self.logger.error(f"Failed to launch segmentation tools: {result.stderr}")
+                self.logger.error(f"Failed to launch segmentation tools: {result.returncode}")
                 return False
-            self.logger.info("Segmentation tools launched successfully")
-            self.logger.info(f"Segmentation script output: {result.stdout}")
+            self.logger.info("Segmentation tools completed successfully")
             
             return True
             
@@ -642,8 +824,8 @@ class ProcessSingleCellDataStage(StageBase):
     """
     Process Single-cell Data Stage
     
-    Handles ROI tracking, resizing, duplication, and cell extraction.
-    Includes: roi_tracking, resize_rois, duplicate_rois_for_analysis_channels, extract_cells
+    Handles ROI tracking, resizing, duplication, cell extraction, and cell grouping.
+    Includes: roi_tracking, resize_rois, duplicate_rois_for_analysis_channels, extract_cells, group_cells
     """
     
     def __init__(self, config, logger, stage_name="process_single_cell"):
@@ -654,7 +836,8 @@ class ProcessSingleCellDataStage(StageBase):
         # Check if required scripts exist
         required_scripts = [
             "src/python/modules/track_rois.py", "src/python/modules/resize_rois.py", 
-            "src/python/modules/duplicate_rois_for_channels.py", "src/python/modules/extract_cells.py"
+            "src/python/modules/duplicate_rois_for_channels.py", "src/python/modules/extract_cells.py",
+            "src/python/modules/group_cells.py"
         ]
         for script in required_scripts:
             if not Path(script).exists():
@@ -764,6 +947,23 @@ class ProcessSingleCellDataStage(StageBase):
                 return False
             self.logger.info("Cells extracted successfully")
             
+            # Step 5: Group cells
+            self.logger.info("Grouping cells...")
+            group_script = "src/python/modules/group_cells.py"
+            group_args = [
+                "--cells-dir", f"{output_dir}/cells",
+                "--output-dir", f"{output_dir}/grouped_cells",
+                "--bins", str(kwargs.get('bins', 5)),
+                "--force-clusters",
+                "--channels"
+            ] + data_selection.get('analysis_channels', [])
+            
+            result = subprocess.run([group_script] + group_args, capture_output=True, text=True)
+            if result.returncode != 0:
+                self.logger.error(f"Failed to group cells: {result.stderr}")
+                return False
+            self.logger.info("Cells grouped successfully")
+            
             return True
             
         except Exception as e:
@@ -775,8 +975,8 @@ class ThresholdGroupedCellsStage(StageBase):
     """
     Threshold Grouped Cells Stage
     
-    Handles cell grouping and thresholding of grouped cells.
-    Includes: group_cells, threshold_grouped_cells
+    Handles thresholding of grouped cells.
+    Includes: threshold_grouped_cells
     """
     
     def __init__(self, config, logger, stage_name="threshold_grouped_cells"):
@@ -785,7 +985,7 @@ class ThresholdGroupedCellsStage(StageBase):
     def validate_inputs(self, **kwargs) -> bool:
         """Validate inputs for threshold grouped cells stage."""
         # Check if required scripts exist
-        required_scripts = ["src/python/modules/group_cells.py", "src/python/modules/otsu_threshold_grouped_cells.py"]
+        required_scripts = ["src/python/modules/otsu_threshold_grouped_cells.py"]
         for script in required_scripts:
             if not Path(script).exists():
                 self.logger.error(f"Required script not found: {script}")
@@ -823,24 +1023,7 @@ class ThresholdGroupedCellsStage(StageBase):
                 self.logger.error("Output directory is required")
                 return False
             
-            # Step 1: Group cells
-            self.logger.info("Grouping cells...")
-            group_script = "src/python/modules/group_cells.py"
-            group_args = [
-                "--cells-dir", f"{output_dir}/cells",
-                "--output-dir", f"{output_dir}/grouped_cells",
-                "--bins", str(kwargs.get('bins', 5)),
-                "--force-clusters",
-                "--channels"
-            ] + data_selection.get('analysis_channels', [])
-            
-            result = subprocess.run([group_script] + group_args, capture_output=True, text=True)
-            if result.returncode != 0:
-                self.logger.error(f"Failed to group cells: {result.stderr}")
-                return False
-            self.logger.info("Cells grouped successfully")
-            
-            # Step 2: Threshold grouped cells
+            # Threshold grouped cells
             self.logger.info("Thresholding grouped cells...")
             threshold_script = "src/python/modules/otsu_threshold_grouped_cells.py"
             threshold_args = [

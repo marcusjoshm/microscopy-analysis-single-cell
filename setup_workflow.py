@@ -147,18 +147,6 @@ class WorkflowSetup:
                 logger.info("Configuration creation cancelled")
                 return False
         
-        # Load template
-        if not self.config_template_path.exists():
-            logger.error(f"Template not found: {self.config_template_path}")
-            return False
-        
-        try:
-            with open(self.config_template_path, 'r') as f:
-                config = json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load template: {e}")
-            return False
-        
         # Ensure virtual environment exists
         if not self.cellpose_venv_path.exists():
             if not self.create_virtual_environment():
@@ -175,11 +163,40 @@ class WorkflowSetup:
         logger.info("Detecting software installations...")
         detected_paths, validation_results = detect_and_validate_paths()
         
+        # Create new configuration structure
+        config = {
+            "imagej_path": "",
+            "cellpose_path": "",
+            "python_path": str(python_path),
+            "fiji_path": "",
+            "analysis": {
+                "default_bins": 5,
+                "segmentation_model": "cyto",
+                "cell_diameter": 100,
+                "niter_dynamics": 250,
+                "flow_threshold": 0.4,
+                "cellprob_threshold": 0
+            },
+            "output": {
+                "create_subdirectories": True,
+                "save_intermediate": True,
+                "compression": "lzw",
+                "overwrite": False
+            },
+            "directories": {
+                "input": "",
+                "output": "",
+                "recent_inputs": [],
+                "recent_outputs": []
+            }
+        }
+        
         # Update config with detected paths
         if 'imagej_path' in detected_paths and detected_paths['imagej_path']:
             config['imagej_path'] = detected_paths['imagej_path']
-        if 'cellpose_env' in detected_paths:
-            config['cellpose_env'] = str(python_path)
+            config['fiji_path'] = detected_paths['imagej_path']  # Use same path for both
+        if 'cellpose_env' in detected_paths and detected_paths['cellpose_env']:
+            config['cellpose_path'] = detected_paths['cellpose_env']
         
         # Interactive setup for missing software
         missing_software = [sw for sw, valid in validation_results.items() if not valid]
@@ -195,6 +212,9 @@ class WorkflowSetup:
         
         # Save configuration
         try:
+            # Ensure config directory exists
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            
             with open(self.config_path, 'w') as f:
                 json.dump(config, f, indent=2)
             logger.info(f"Configuration saved to {self.config_path}")
@@ -206,12 +226,16 @@ class WorkflowSetup:
             print(f"✓ Configuration saved to: {self.config_path}")
             if config.get('imagej_path'):
                 print(f"✓ ImageJ/Fiji: {config['imagej_path']}")
-            if config.get('cellpose_env'):
-                print(f"✓ Cellpose environment: {config['cellpose_env']}")
+            if config.get('cellpose_path'):
+                print(f"✓ Cellpose environment: {config['cellpose_path']}")
+            if config.get('python_path'):
+                print(f"✓ Python: {config['python_path']}")
             
-            print(f"✓ Workflow steps: {len(config.get('steps', []))} steps loaded")
+            print(f"✓ Analysis settings: {len(config.get('analysis', {}))} parameters configured")
+            print(f"✓ Output settings: {len(config.get('output', {}))} parameters configured")
+            
             print("\nConfiguration complete! You can now run the workflow.")
-            print("Channel selection will be interactive during workflow execution.")
+            print("Use 'python main.py' to start the interactive workflow.")
             
             return True
         except Exception as e:
@@ -238,6 +262,7 @@ class WorkflowSetup:
             # Validate the manual path
             if software == 'imagej_path' and self.detector._validate_imagej_path(manual_path):
                 config['imagej_path'] = manual_path
+                config['fiji_path'] = manual_path  # Use same path for both
                 logger.info(f"✓ Manually configured {software}: {manual_path}")
             else:
                 logger.warning(f"✗ Invalid path for {software}: {manual_path}")
@@ -267,7 +292,7 @@ class WorkflowSetup:
         all_valid = True
         
         # Check required software paths
-        required_paths = ['imagej_path', 'cellpose_env']
+        required_paths = ['imagej_path', 'cellpose_path', 'python_path']
         
         for path_name in required_paths:
             path = config.get(path_name)
@@ -282,19 +307,27 @@ class WorkflowSetup:
                     all_valid = False
                 else:
                     logger.info(f"✓ Valid ImageJ path: {path}")
-            elif path_name == 'cellpose_env':
+            elif path_name == 'cellpose_path':
                 if not self.detector._validate_cellpose_in_env(path):
                     logger.error(f"Invalid Cellpose environment: {path}")
                     all_valid = False
                 else:
                     logger.info(f"✓ Valid Cellpose environment: {path}")
+            elif path_name == 'python_path':
+                if not os.path.exists(path) or not os.access(path, os.X_OK):
+                    logger.error(f"Invalid Python path: {path}")
+                    all_valid = False
+                else:
+                    logger.info(f"✓ Valid Python path: {path}")
         
-        # Check workflow steps
-        steps = config.get('steps', [])
-        if not steps:
-            logger.warning("No workflow steps found in configuration")
-        else:
-            logger.info(f"✓ Found {len(steps)} workflow steps")
+        # Check configuration sections
+        required_sections = ['analysis', 'output', 'directories']
+        for section in required_sections:
+            if section not in config:
+                logger.error(f"Missing required section: {section}")
+                all_valid = False
+            else:
+                logger.info(f"✓ Found {section} configuration")
         
         return all_valid
     
@@ -321,12 +354,9 @@ class WorkflowSetup:
         print("\n" + "="*60)
         print("CURRENT CONFIGURATION")
         print("="*60)
-        print(f"Name: {config.get('name', 'Unknown')}")
-        print(f"Version: {config.get('version', 'Unknown')}")
-        print(f"Description: {config.get('description', 'No description')}")
         
         # Software paths
-        print(f"\nSoftware Paths:")
+        print(f"Software Paths:")
         imagej_path = config.get('imagej_path')
         if imagej_path:
             status = "✓" if self.detector._validate_imagej_path(imagej_path) else "✗"
@@ -334,23 +364,40 @@ class WorkflowSetup:
         else:
             print(f"  ImageJ/Fiji: ✗ Not configured")
         
-        cellpose_env = config.get('cellpose_env')
-        if cellpose_env:
-            status = "✓" if self.detector._validate_cellpose_in_env(cellpose_env) else "✗"
-            print(f"  Cellpose: {status} {cellpose_env}")
+        cellpose_path = config.get('cellpose_path')
+        if cellpose_path:
+            status = "✓" if self.detector._validate_cellpose_in_env(cellpose_path) else "✗"
+            print(f"  Cellpose: {status} {cellpose_path}")
         else:
             print(f"  Cellpose: ✗ Not configured")
         
-        # Workflow steps
-        steps = config.get('steps', [])
-        print(f"\nWorkflow: {len(steps)} steps configured")
+        python_path = config.get('python_path')
+        if python_path:
+            status = "✓" if os.path.exists(python_path) and os.access(python_path, os.X_OK) else "✗"
+            print(f"  Python: {status} {python_path}")
+        else:
+            print(f"  Python: ✗ Not configured")
         
-        if steps:
-            print("\nWorkflow Steps:")
-            for i, step in enumerate(steps, 1):
-                step_type = step.get('type', 'unknown')
-                step_name = step.get('name', 'unnamed')
-                print(f"  {i:2d}. {step_name} ({step_type})")
+        # Analysis settings
+        analysis = config.get('analysis', {})
+        print(f"\nAnalysis Settings:")
+        for key, value in analysis.items():
+            print(f"  {key}: {value}")
+        
+        # Output settings
+        output = config.get('output', {})
+        print(f"\nOutput Settings:")
+        for key, value in output.items():
+            print(f"  {key}: {value}")
+        
+        # Directories
+        directories = config.get('directories', {})
+        print(f"\nDirectories:")
+        for key, value in directories.items():
+            if key in ['recent_inputs', 'recent_outputs']:
+                print(f"  {key}: {len(value) if isinstance(value, list) else 0} entries")
+            else:
+                print(f"  {key}: {value or 'Not set'}")
         
         return True
 

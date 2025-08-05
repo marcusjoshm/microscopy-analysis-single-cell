@@ -83,9 +83,9 @@ def create_macro_with_parameters(macro_template_file, input_dir, output_dir, cha
             if not line.strip().startswith('#@'):
                 filtered_lines.append(line)
         
-        # Ensure paths use forward slashes for ImageJ
-        input_dir_path = str(input_dir).replace('\\', '/')
-        output_dir_path = str(output_dir).replace('\\', '/')
+        # Ensure paths use forward slashes for ImageJ and remove trailing slashes
+        input_dir_path = str(input_dir).replace('\\', '/').rstrip('/')
+        output_dir_path = str(output_dir).replace('\\', '/').rstrip('/')
         
         # Define the flag file path
         flag_file_path = Path(output_dir) / "NEED_MORE_BINS.flag"
@@ -100,7 +100,6 @@ def create_macro_with_parameters(macro_template_file, input_dir, output_dir, cha
 input_dir = "{input_dir_path}";
 output_dir = "{output_dir_path}";
 flag_file = "{flag_file_path_str}";
-channel_filter_logic = ""; // Not used in this approach
 auto_close = {str(auto_close).lower()};
 """
         
