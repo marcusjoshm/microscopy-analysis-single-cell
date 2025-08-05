@@ -7,6 +7,7 @@ Streamlined main script using the refactored architecture.
 
 import sys
 import os
+import argparse
 from pathlib import Path
 
 # Add src to Python path
@@ -17,6 +18,72 @@ from src.python.core.logger import PipelineLogger
 from src.python.core.cli import parse_arguments, CLIError, show_header, create_cli
 from src.python.core.pipeline import Pipeline
 from src.python.core.config import create_default_config
+
+
+def run_complete_workflow(config: Config, logger: PipelineLogger, args: argparse.Namespace) -> bool:
+    """
+    Run the complete workflow sequentially.
+    
+    Args:
+        config: Pipeline configuration
+        logger: Pipeline logger
+        args: Command line arguments
+        
+    Returns:
+        True if all stages completed successfully, False otherwise
+    """
+    stages = [
+        ('data_selection', 'Data Selection'),
+        ('segmentation', 'Single-cell Segmentation'),
+        ('process_single_cell', 'Process Single-cell Data'),
+        ('threshold_grouped_cells', 'Threshold Grouped Cells'),
+        ('analysis', 'Analysis')
+    ]
+    
+    for stage_name, stage_display_name in stages:
+        print(f"\n" + "="*60)
+        print(f"Starting {stage_display_name}...")
+        print("="*60)
+        
+        # Create temporary args for this stage
+        stage_args = argparse.Namespace()
+        stage_args.__dict__.update(args.__dict__)
+        
+        # Clear all stage flags and set only the current one
+        stage_args.data_selection = False
+        stage_args.segmentation = False
+        stage_args.process_single_cell = False
+        stage_args.threshold_grouped_cells = False
+        stage_args.analysis = False
+        stage_args.complete_workflow = False
+        
+        # Set the current stage
+        setattr(stage_args, stage_name, True)
+        
+        # Create and run pipeline for this stage
+        try:
+            pipeline = Pipeline(config, logger, stage_args)
+            success = pipeline.run()
+            
+            if not success:
+                print(f"\n❌ {stage_display_name} failed!")
+                print("Workflow stopped due to stage failure.")
+                return False
+            
+            print(f"\n✅ {stage_display_name} completed successfully!")
+            
+            # Add a small delay between stages
+            import time
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"\n❌ Error in {stage_display_name}: {e}")
+            return False
+    
+    print(f"\n" + "="*60)
+    print("🎉 Complete Workflow finished successfully!")
+    print("="*60)
+    return True
 
 
 def main():
@@ -63,13 +130,25 @@ def main():
                     input()
                     continue  # Return to menu
                 
+                # Check if any stages are selected
+                stages_selected = any([args.data_selection, args.segmentation, args.process_single_cell,
+                                     args.threshold_grouped_cells, args.analysis, args.complete_workflow])
+                
+                if not stages_selected:
+                    # No stages selected, just return to menu (e.g., after setting directories)
+                    continue
+                
                 # Create logger
                 log_level = "DEBUG" if args.verbose else "INFO"
                 logger = PipelineLogger(args.output, log_level=log_level)
                 
-                # Create and run pipeline
-                pipeline = Pipeline(config, logger, args)
-                success = pipeline.run()
+                # Handle complete workflow differently
+                if args.complete_workflow:
+                    success = run_complete_workflow(config, logger, args)
+                else:
+                    # Create and run pipeline for single stage
+                    pipeline = Pipeline(config, logger, args)
+                    success = pipeline.run()
                 
                 if success:
                     print("\n" + "="*60)

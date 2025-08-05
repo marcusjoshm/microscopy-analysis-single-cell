@@ -9,6 +9,7 @@ import subprocess
 import os
 import re
 import sys
+import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Set, Optional
 from ..core.stages import StageBase
@@ -36,8 +37,12 @@ class DataSelectionStage(StageBase):
     def validate_inputs(self, **kwargs) -> bool:
         """Validate inputs for data selection stage."""
         input_dir = kwargs.get('input_dir')
+        output_dir = kwargs.get('output_dir')
         if not input_dir or not Path(input_dir).exists():
             self.logger.error(f"Input directory does not exist: {input_dir}")
+            return False
+        if not output_dir:
+            self.logger.error("Output directory is required")
             return False
         return True
     
@@ -46,25 +51,31 @@ class DataSelectionStage(StageBase):
         try:
             self.logger.info("Starting Data Selection Stage")
             
-            # Store input directory for later use
-            self.input_dir = kwargs['input_dir']
+            # Store input and output directories for later use
+            self.input_dir = Path(kwargs['input_dir'])
+            self.output_dir = Path(kwargs['output_dir'])
             
-            # Step 1: Prepare input structure
+            # Step 1: Setup output directory structure
+            self.logger.info("Setting up output directory structure...")
+            if not self._setup_output_structure():
+                return False
+            
+            # Step 2: Prepare input structure
             self.logger.info("Preparing input structure...")
-            if not self._prepare_input_structure(kwargs['input_dir']):
+            if not self._prepare_input_structure(str(self.input_dir)):
                 return False
             
-            # Step 2: Extract experiment metadata
+            # Step 3: Extract experiment metadata
             self.logger.info("Extracting experiment metadata...")
-            if not self._extract_experiment_metadata(kwargs['input_dir']):
+            if not self._extract_experiment_metadata(str(self.input_dir)):
                 return False
             
-            # Step 3: Interactive data selection
+            # Step 4: Interactive data selection
             self.logger.info("Starting interactive data selection...")
             if not self._run_interactive_selection():
                 return False
             
-            # Step 4: Save selections to config
+            # Step 5: Save selections to config
             self.logger.info("Saving data selections...")
             self._save_selections_to_config()
             
@@ -73,6 +84,38 @@ class DataSelectionStage(StageBase):
             
         except Exception as e:
             self.logger.error(f"Error in Data Selection Stage: {e}")
+            return False
+    
+
+    
+
+    
+    def _setup_output_structure(self) -> bool:
+        """Set up the output directory structure using the setup_output_structure.sh script."""
+        try:
+            # Use the setup_output_structure.sh script
+            script_path = Path("scripts/setup_output_structure.sh")
+            if not script_path.exists():
+                self.logger.error(f"setup_output_structure.sh script not found: {script_path}")
+                return False
+            
+            # Make sure the script is executable
+            script_path.chmod(0o755)
+            
+            # Run the script
+            result = subprocess.run([str(script_path), str(self.input_dir), str(self.output_dir)], 
+                                  capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                self.logger.error(f"setup_output_structure.sh failed: {result.stderr}")
+                return False
+            
+            self.logger.info("Output directory structure setup complete")
+            self.logger.info(f"Script output: {result.stdout}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error setting up output structure: {e}")
             return False
     
     def _prepare_input_structure(self, input_dir: str) -> bool:
@@ -91,7 +134,6 @@ class DataSelectionStage(StageBase):
             script_path.chmod(0o755)
             
             # Run the script
-            import subprocess
             result = subprocess.run([str(script_path), str(input_path)], 
                                   capture_output=True, text=True)
             
@@ -306,6 +348,7 @@ class DataSelectionStage(StageBase):
         
         available_items = self.experiment_metadata['conditions']
         self.selected_conditions = self._handle_list_selection(available_items, "conditions", self.selected_conditions)
+        
         return True
     
     def _select_timepoints(self) -> bool:
@@ -318,6 +361,7 @@ class DataSelectionStage(StageBase):
         
         available_items = self.experiment_metadata['timepoints']
         self.selected_timepoints = self._handle_list_selection(available_items, "timepoints", self.selected_timepoints)
+        
         return True
     
     def _select_regions(self) -> bool:
@@ -547,7 +591,7 @@ class SegmentationStage(StageBase):
             self.logger.info("Binning images for segmentation...")
             bin_script = "scripts/bin_images.py"
             bin_args = [
-                "--input", input_dir,
+                "--input", f"{output_dir}/raw_data",
                 "--output", f"{output_dir}/preprocessed",
                 "--verbose"
             ]
@@ -607,6 +651,7 @@ class ProcessSingleCellDataStage(StageBase):
         
     def validate_inputs(self, **kwargs) -> bool:
         """Validate inputs for process single-cell data stage."""
+        # Check if required scripts exist
         required_scripts = [
             "scripts/track_rois.py", "scripts/resize_rois.py", 
             "scripts/duplicate_rois_for_channels.py", "scripts/extract_cells.py"
@@ -615,6 +660,20 @@ class ProcessSingleCellDataStage(StageBase):
             if not Path(script).exists():
                 self.logger.error(f"Required script not found: {script}")
                 return False
+        
+        # Check if data selection has been completed
+        data_selection = self.config.get('data_selection')
+        if not data_selection:
+            self.logger.error("Data selection has not been completed. Please run data selection first.")
+            return False
+        
+        # Check if required data selection parameters are available
+        required_params = ['selected_conditions', 'selected_regions', 'selected_timepoints', 'segmentation_channel', 'analysis_channels']
+        missing_params = [param for param in required_params if not data_selection.get(param)]
+        if missing_params:
+            self.logger.error(f"Missing data selection parameters: {missing_params}")
+            return False
+        
         return True
     
     def run(self, **kwargs) -> bool:
@@ -622,29 +681,46 @@ class ProcessSingleCellDataStage(StageBase):
         try:
             self.logger.info("Starting Process Single-cell Data Stage")
             
+            # Get data selection parameters from config
+            data_selection = self.config.get('data_selection')
+            if not data_selection:
+                self.logger.error("No data selection information found in config")
+                return False
+            
+            # Get input and output directories
+            input_dir = kwargs.get('input_dir')
+            output_dir = kwargs.get('output_dir')
+            
+            if not input_dir or not output_dir:
+                self.logger.error("Input and output directories are required")
+                return False
+            
             # Step 1: ROI tracking (if multiple timepoints)
-            if kwargs.get('timepoints') and len(kwargs['timepoints']) > 1:
+            timepoints = data_selection.get('selected_timepoints', [])
+            if timepoints and len(timepoints) > 1:
                 self.logger.info("Tracking ROIs across timepoints...")
                 track_script = "scripts/track_rois.py"
                 track_args = [
-                    "--input", f"{kwargs['output_dir']}/preprocessed",
+                    "--input", f"{output_dir}/preprocessed",
                     "--timepoints"
-                ] + kwargs['timepoints'] + ["--recursive"]
+                ] + timepoints + ["--recursive"]
                 
                 result = subprocess.run([track_script] + track_args, capture_output=True, text=True)
                 if result.returncode != 0:
                     self.logger.error(f"Failed to track ROIs: {result.stderr}")
                     return False
                 self.logger.info("ROI tracking completed successfully")
+            else:
+                self.logger.info("Skipping ROI tracking (single timepoint or no timepoints)")
             
             # Step 2: Resize ROIs
             self.logger.info("Resizing ROIs...")
             resize_script = "scripts/resize_rois.py"
             resize_args = [
-                "--input", f"{kwargs['output_dir']}/preprocessed",
-                "--output", f"{kwargs['output_dir']}/ROIs",
+                "--input", f"{output_dir}/preprocessed",
+                "--output", f"{output_dir}/ROIs",
                 "--imagej", self.config.get('imagej_path'),
-                "--channel", kwargs.get('segmentation_channel', ''),
+                "--channel", data_selection.get('segmentation_channel', ''),
                 "--macro", "macros/resize_rois.ijm",
                 "--auto-close"
             ]
@@ -659,9 +735,9 @@ class ProcessSingleCellDataStage(StageBase):
             self.logger.info("Duplicating ROIs for analysis channels...")
             duplicate_script = "scripts/duplicate_rois_for_channels.py"
             duplicate_args = [
-                "--roi-dir", f"{kwargs['output_dir']}/ROIs",
+                "--roi-dir", f"{output_dir}/ROIs",
                 "--channels"
-            ] + kwargs.get('analysis_channels', []) + ["--verbose"]
+            ] + data_selection.get('analysis_channels', []) + ["--verbose"]
             
             result = subprocess.run([duplicate_script] + duplicate_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -673,14 +749,14 @@ class ProcessSingleCellDataStage(StageBase):
             self.logger.info("Extracting cells...")
             extract_script = "scripts/extract_cells.py"
             extract_args = [
-                "--roi-dir", f"{kwargs['output_dir']}/ROIs",
-                "--raw-data-dir", f"{kwargs['output_dir']}/raw_data",
-                "--output-dir", f"{kwargs['output_dir']}/cells",
+                "--roi-dir", f"{output_dir}/ROIs",
+                "--raw-data-dir", f"{output_dir}/raw_data",
+                "--output-dir", f"{output_dir}/cells",
                 "--imagej", self.config.get('imagej_path'),
                 "--macro", "macros/extract_cells.ijm",
                 "--auto-close",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ] + data_selection.get('analysis_channels', [])
             
             result = subprocess.run([extract_script] + extract_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -708,11 +784,26 @@ class ThresholdGroupedCellsStage(StageBase):
         
     def validate_inputs(self, **kwargs) -> bool:
         """Validate inputs for threshold grouped cells stage."""
+        # Check if required scripts exist
         required_scripts = ["scripts/group_cells.py", "scripts/otsu_threshold_grouped_cells.py"]
         for script in required_scripts:
             if not Path(script).exists():
                 self.logger.error(f"Required script not found: {script}")
                 return False
+        
+        # Check if data selection has been completed
+        data_selection = self.config.get('data_selection')
+        if not data_selection:
+            self.logger.error("Data selection has not been completed. Please run data selection first.")
+            return False
+        
+        # Check if required data selection parameters are available
+        required_params = ['analysis_channels']
+        missing_params = [param for param in required_params if not data_selection.get(param)]
+        if missing_params:
+            self.logger.error(f"Missing data selection parameters: {missing_params}")
+            return False
+        
         return True
     
     def run(self, **kwargs) -> bool:
@@ -720,16 +811,28 @@ class ThresholdGroupedCellsStage(StageBase):
         try:
             self.logger.info("Starting Threshold Grouped Cells Stage")
             
+            # Get data selection parameters from config
+            data_selection = self.config.get('data_selection')
+            if not data_selection:
+                self.logger.error("No data selection information found in config")
+                return False
+            
+            # Get output directory
+            output_dir = kwargs.get('output_dir')
+            if not output_dir:
+                self.logger.error("Output directory is required")
+                return False
+            
             # Step 1: Group cells
             self.logger.info("Grouping cells...")
             group_script = "scripts/group_cells.py"
             group_args = [
-                "--cells-dir", f"{kwargs['output_dir']}/cells",
-                "--output-dir", f"{kwargs['output_dir']}/grouped_cells",
+                "--cells-dir", f"{output_dir}/cells",
+                "--output-dir", f"{output_dir}/grouped_cells",
                 "--bins", str(kwargs.get('bins', 5)),
                 "--force-clusters",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ] + data_selection.get('analysis_channels', [])
             
             result = subprocess.run([group_script] + group_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -741,12 +844,15 @@ class ThresholdGroupedCellsStage(StageBase):
             self.logger.info("Thresholding grouped cells...")
             threshold_script = "scripts/otsu_threshold_grouped_cells.py"
             threshold_args = [
-                "--input-dir", f"{kwargs['output_dir']}/grouped_cells",
-                "--output-dir", f"{kwargs['output_dir']}/grouped_masks",
+                "--input-dir", f"{output_dir}/grouped_cells",
+                "--output-dir", f"{output_dir}/grouped_masks",
                 "--imagej", self.config.get('imagej_path'),
                 "--macro", "macros/threshold_grouped_cells.ijm",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ]
+            # Add analysis channels as separate arguments (matching original workflow)
+            for channel in data_selection.get('analysis_channels', []):
+                threshold_args.append(channel)
             
             result = subprocess.run([threshold_script] + threshold_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -774,6 +880,7 @@ class AnalysisStage(StageBase):
         
     def validate_inputs(self, **kwargs) -> bool:
         """Validate inputs for analysis stage."""
+        # Check if required scripts exist
         required_scripts = [
             "scripts/combine_masks.py", "scripts/create_cell_masks.py",
             "scripts/analyze_cell_masks.py", "scripts/include_group_metadata.py"
@@ -782,6 +889,20 @@ class AnalysisStage(StageBase):
             if not Path(script).exists():
                 self.logger.error(f"Required script not found: {script}")
                 return False
+        
+        # Check if data selection has been completed
+        data_selection = self.config.get('data_selection')
+        if not data_selection:
+            self.logger.error("Data selection has not been completed. Please run data selection first.")
+            return False
+        
+        # Check if required data selection parameters are available
+        required_params = ['analysis_channels']
+        missing_params = [param for param in required_params if not data_selection.get(param)]
+        if missing_params:
+            self.logger.error(f"Missing data selection parameters: {missing_params}")
+            return False
+        
         return True
     
     def run(self, **kwargs) -> bool:
@@ -789,14 +910,29 @@ class AnalysisStage(StageBase):
         try:
             self.logger.info("Starting Analysis Stage")
             
+            # Get data selection parameters from config
+            data_selection = self.config.get('data_selection')
+            if not data_selection:
+                self.logger.error("No data selection information found in config")
+                return False
+            
+            # Get output directory
+            output_dir = kwargs.get('output_dir')
+            if not output_dir:
+                self.logger.error("Output directory is required")
+                return False
+            
             # Step 1: Combine masks
             self.logger.info("Combining masks...")
             combine_script = "scripts/combine_masks.py"
             combine_args = [
-                "--input-dir", f"{kwargs['output_dir']}/grouped_masks",
-                "--output-dir", f"{kwargs['output_dir']}/combined_masks",
+                "--input-dir", f"{output_dir}/grouped_masks",
+                "--output-dir", f"{output_dir}/combined_masks",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ]
+            # Add analysis channels as separate arguments (matching original workflow)
+            for channel in data_selection.get('analysis_channels', []):
+                combine_args.append(channel)
             
             result = subprocess.run([combine_script] + combine_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -808,14 +944,17 @@ class AnalysisStage(StageBase):
             self.logger.info("Creating cell masks...")
             create_masks_script = "scripts/create_cell_masks.py"
             create_masks_args = [
-                "--roi-dir", f"{kwargs['output_dir']}/ROIs",
-                "--mask-dir", f"{kwargs['output_dir']}/combined_masks",
-                "--output-dir", f"{kwargs['output_dir']}/masks",
+                "--roi-dir", f"{output_dir}/ROIs",
+                "--mask-dir", f"{output_dir}/combined_masks",
+                "--output-dir", f"{output_dir}/masks",
                 "--imagej", self.config.get('imagej_path'),
                 "--macro", "macros/create_cell_masks.ijm",
                 "--auto-close",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ]
+            # Add analysis channels as separate arguments (matching original workflow)
+            for channel in data_selection.get('analysis_channels', []):
+                create_masks_args.append(channel)
             
             result = subprocess.run([create_masks_script] + create_masks_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -827,18 +966,21 @@ class AnalysisStage(StageBase):
             self.logger.info("Analyzing cell masks...")
             analyze_script = "scripts/analyze_cell_masks.py"
             analyze_args = [
-                "--input", f"{kwargs['output_dir']}/masks",
-                "--output", f"{kwargs['output_dir']}/analysis",
+                "--input", f"{output_dir}/masks",
+                "--output", f"{output_dir}/analysis",
                 "--imagej", self.config.get('imagej_path'),
                 "--macro", "macros/analyze_cell_masks.ijm",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ]
+            # Add analysis channels as separate arguments (matching original workflow)
+            for channel in data_selection.get('analysis_channels', []):
+                analyze_args.append(channel)
             
             # Add optional arguments if provided
-            if kwargs.get('regions'):
-                analyze_args.extend(["--regions"] + kwargs['regions'])
-            if kwargs.get('timepoints'):
-                analyze_args.extend(["--timepoints"] + kwargs['timepoints'])
+            if data_selection.get('selected_regions'):
+                analyze_args.extend(["--regions"] + data_selection['selected_regions'])
+            if data_selection.get('selected_timepoints'):
+                analyze_args.extend(["--timepoints"] + data_selection['selected_timepoints'])
             
             result = subprocess.run([analyze_script] + analyze_args, capture_output=True, text=True)
             if result.returncode != 0:
@@ -850,14 +992,17 @@ class AnalysisStage(StageBase):
             self.logger.info("Including group metadata...")
             metadata_script = "scripts/include_group_metadata.py"
             metadata_args = [
-                "--grouped-cells-dir", f"{kwargs['output_dir']}/grouped_cells",
-                "--analysis-dir", f"{kwargs['output_dir']}/analysis",
-                "--output-dir", kwargs['output_dir'],
+                "--grouped-cells-dir", f"{output_dir}/grouped_cells",
+                "--analysis-dir", f"{output_dir}/analysis",
+                "--output-dir", output_dir,
                 "--overwrite",
                 "--replace",
                 "--verbose",
                 "--channels"
-            ] + kwargs.get('analysis_channels', [])
+            ]
+            # Add analysis channels as separate arguments (matching original workflow)
+            for channel in data_selection.get('analysis_channels', []):
+                metadata_args.append(channel)
             
             result = subprocess.run([metadata_script] + metadata_args, capture_output=True, text=True)
             if result.returncode != 0:

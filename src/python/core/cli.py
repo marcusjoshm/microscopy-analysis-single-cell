@@ -335,7 +335,7 @@ Examples:
         
         # Update args based on choice
         if choice == "1":
-            # Set directories using the set_directories module
+            # Set directories only (no directory creation)
             try:
                 from ..modules.set_directories import set_default_directories
                 from ..modules.directory_setup import load_config, save_config
@@ -354,6 +354,7 @@ Examples:
                 print(f"\n✅ Directories set successfully!")
                 print(f"  Input: {input_path}")
                 print(f"  Output: {output_path}")
+                print(f"  Note: Directory structure will be created when running workflow modules")
                 
             except ImportError as e:
                 print(f"Error: Could not import set_directories module: {e}")
@@ -363,7 +364,24 @@ Examples:
                 if not args.output:
                     args.output = self._get_directory_input("Enter output directory path: ")
         elif choice == "2":
-            args.complete_workflow = True
+            # Run complete workflow sequentially
+            print("\n" + "="*60)
+            print("Running Complete Workflow")
+            print("This will execute all steps in sequence:")
+            print("1. Data Selection (Option 3)")
+            print("2. Single-cell Segmentation (Option 4)")
+            print("3. Process Single-cell Data (Option 5)")
+            print("4. Threshold Grouped Cells (Option 6)")
+            print("5. Analysis (Option 7)")
+            print("="*60 + "\n")
+            
+            # Set all stages to run sequentially
+            args.data_selection = True
+            args.segmentation = True
+            args.process_single_cell = True
+            args.threshold_grouped_cells = True
+            args.analysis = True
+            args.complete_workflow = True  # Flag to indicate sequential execution
         elif choice == "3":
             args.data_selection = True
         elif choice == "4":
@@ -398,6 +416,45 @@ Examples:
             if directory:
                 return directory
             print("Please enter a valid directory path.")
+    
+    def _setup_output_structure(self, input_dir: str, output_dir: str) -> bool:
+        """
+        Set up the output directory structure using the setup_output_structure.sh script.
+        
+        Args:
+            input_dir: Input directory path
+            output_dir: Output directory path
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import subprocess
+            from pathlib import Path
+            
+            # Use the setup_output_structure.sh script
+            script_path = Path("scripts/setup_output_structure.sh")
+            if not script_path.exists():
+                print(f"Error: setup_output_structure.sh script not found: {script_path}")
+                return False
+            
+            # Make sure the script is executable
+            script_path.chmod(0o755)
+            
+            # Run the script
+            result = subprocess.run([str(script_path), input_dir, output_dir], 
+                                  capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"Error: setup_output_structure.sh failed: {result.stderr}")
+                return False
+            
+            print(f"Script output: {result.stdout}")
+            return True
+            
+        except Exception as e:
+            print(f"Error setting up output structure: {e}")
+            return False
     
     def get_choice(self, prompt: str, choices: list, default: int = 1) -> int:
         """

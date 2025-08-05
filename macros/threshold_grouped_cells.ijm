@@ -50,6 +50,10 @@ print("cellsDir: " + cellsDir);
 if (!endsWith(cellsDir, "/")) cellsDir = cellsDir + "/";
 if (!endsWith(outputDir, "/")) outputDir = outputDir + "/";
 
+// Remove any double slashes that might occur
+cellsDir = replace(cellsDir, "//", "/");
+outputDir = replace(outputDir, "//", "/");
+
 // Get list of condition directories in cellsDir
 conditionDirs = getFileList(cellsDir);
 print("Found condition directories: " + joinArray(conditionDirs, ", "));
