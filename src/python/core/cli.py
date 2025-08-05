@@ -29,38 +29,19 @@ def colorize(text: str, color: str) -> str:
 def show_header() -> None:
     """Display colorful Single Cell Analyzer ASCII art header"""
     header = [
-        "  ",
-        "                                                               ",
-        "      ███████╗ ██╗ ███╗   ██╗  ██████╗  ██╗      ███████╗      ",
-        "      ██╔════╝ ██║ ████╗  ██║ ██╔════╝  ██║      ██╔════╝      ",
-        "      ███████╗ ██║ ██╔██╗ ██║ ██║  ███╗ ██║      █████╗        ",
-        "      ╚════██║ ██║ ██║╚██╗██║ ██║   ██║ ██║      ██╔══╝        ",
-        "      ███████║ ██║ ██║ ╚████║ ╚██████╔╝ ███████╗ ███████╗      ",
-        "      ╚══════╝ ╚═╝ ╚═╝  ╚═══╝  ╚═════╝  ╚══════╝ ╚══════╝      ",
-        "                                                               ",
-        "      ██████╗ ███████╗ ██╗      ██╗                            ",
-        "      ██╔═══╝ ██╔════╝ ██║      ██║                            ",
-        "      ██║     █████╗   ██║      ██║                            ",
-        "      ██║     ██╔══╝   ██║      ██║                            ",
-        "      ██████╗ ███████╗ ███████╗ ███████╗                       ",
-        "      ╚═════╝ ╚══════╝ ╚══════╝ ╚══════╝                       ",
-        "                                                               ",
-        "       █████╗  ███╗   ██╗  █████╗             ",
-        "      ██╔══██╗ ████╗  ██║ ██╔══██╗            ",
-        "      ███████║ ██╔██╗ ██║ ███████║            ",
-        "      ██╔══██║ ██║╚██╗██║ ██╔══██║            ",
-        "      ██║  ██║ ██║ ╚████║ ██║  ██║            ",
-        "      ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚═╝  ╚═╝            ",
-        "                                                                          ",
-        "      ██╗    ██╗   ██╗ ███████╗ ███████╗ ███████╗                         ",
-        "      ██║    ╚██╗ ██╔╝ ╚════██║ ██╔════╝ ██╔══██╗                         ",
-        "      ██║     ╚████╔╝     ██╔╝  █████╗   ██████╔╝                         ",
-        "      ██║      ╚██╔╝    ██╔╝    ██╔══╝   ██╔══██╗                         ",
-        "      ███████╗  ██║    ███████╗ ███████╗ ██║  ██║                         ",
-        "      ╚══════╝  ╚═╝    ╚══════╝ ╚══════╝ ╚═╝  ╚═╝                         ",
-        "                                                                          ",
-        "  ",
-        ""
+        " ███████╗██╗███╗   ██╗ ██████╗ ██╗    ███████╗    ██████╗███████╗██╗    ██╗     ",
+        " ██╔════╝██║████╗  ██║██╔════╝ ██║    ██╔════╝    ██╔═══╝██╔════╝██║    ██║     ",
+        " ███████╗██║██╔██╗ ██║██║  ███╗██║    █████╗      ██║    █████╗  ██║    ██║     ",
+        " ╚════██║██║██║╚██╗██║██║   ██║██║    ██╔══╝      ██║    ██╔══╝  ██║    ██║     ",
+        " ███████║██║██║ ╚████║╚██████╔╝██████╗███████╗    ██████╗███████╗██████╗██████╗ ",
+        " ╚══════╝╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝╚══════╝    ╚═════╝╚══════╝╚═════╝╚═════╝ ",
+        "                                                                                ",
+        "         █████╗ ███╗   ██╗ █████╗ ██╗ ██╗   ██╗█████╗███████╗███████╗           ",
+        "        ██╔══██╗████╗  ██║██╔══██╗██║ ╚██╗ ██╔╝╚══██║██╔════╝██╔══██╗           ",
+        "        ███████║██╔██╗ ██║███████║██║  ╚████╔╝   ██╔╝█████╗  ██████╔╝           ",
+        "        ██╔══██║██║╚██╗██║██╔══██║██║   ╚██╔╝   ██╔╝ ██╔══╝  ██╔══██╗           ",
+        "        ██║  ██║██║ ╚████║██║  ██║██████╗██║   █████╗███████╗██║  ██║           ",
+        "        ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═════╝╚═╝   ╚════╝╚══════╝╚═╝  ╚═╝           "
     ]
 
     rainbow_colors = [
@@ -76,16 +57,16 @@ def show_header() -> None:
     print('')  # Empty line at start
     
     for i, line in enumerate(header):
-        if i < 2 or i > 21:  # Empty lines
+        if i < 0 or i > 20:  # Empty lines
             print(line)
         else:
             # Color the line with specific colors for SINGLE and CELL
             colored_line = ""
             for j, char in enumerate(line):
                 # Determine which section we're in based on line number
-                if 2 <= i <= 7:  # SINGLE section (lines 3-8)
+                if 0 <= i <= 5:  # SINGLE section (lines 3-8)
                     colored_line += colorize(char, Colors.green)
-                elif 9 <= i <= 14:  # CELL section (lines 10-15)
+                elif 7 <= i <= 12:  # CELL section (lines 10-15)
                     colored_line += colorize(char, Colors.red)
                 else:  # ANALYZER section (lines 16-21) - no color
                     colored_line += char
@@ -141,8 +122,8 @@ Examples:
         parser.add_argument(
             '--config',
             type=str,
-            default='config.json',
-            help='Path to configuration file (default: config.json)'
+            default='config/config.json',
+            help='Path to configuration file (default: config/config.json)'
         )
         
         # Processing options
@@ -274,7 +255,7 @@ Examples:
         # Load config to get default directories
         try:
             from ..modules.directory_setup import load_config
-            config_path = getattr(args, 'config', 'config.json')
+            config_path = getattr(args, 'config', 'config/config.json')
             config = load_config(config_path)
             default_input = config.get('directories', {}).get('input', '')
             default_output = config.get('directories', {}).get('output', '')
@@ -318,7 +299,6 @@ Examples:
         
         # Show menu
         show_header()
-        print(colorize("  🔬 Welcome Single Cell Analysis user! 🔬", Colors.bold))
         print("")
         print(colorize("MENU:", Colors.bold))
         print(colorize("1. Set Input/Output Directories", Colors.green))
@@ -341,7 +321,7 @@ Examples:
                 from ..modules.directory_setup import load_config, save_config
                 
                 # Load current config
-                config_path = args.config if hasattr(args, 'config') else 'config.json'
+                config_path = args.config if hasattr(args, 'config') else 'config/config.json'
                 config = load_config(config_path)
                 
                 # Set default directories
@@ -433,7 +413,7 @@ Examples:
             from pathlib import Path
             
             # Use the setup_output_structure.sh script
-            script_path = Path("scripts/setup_output_structure.sh")
+            script_path = Path("src/bash/setup_output_structure.sh")
             if not script_path.exists():
                 print(f"Error: setup_output_structure.sh script not found: {script_path}")
                 return False

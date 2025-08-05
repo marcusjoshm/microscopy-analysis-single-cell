@@ -90,7 +90,7 @@ def main():
     """Main entry point for the microscopy single-cell analysis pipeline."""
     try:
         # Load configuration
-        config_path = "config.json"
+        config_path = "config/config.json"
         if not Path(config_path).exists():
             print(f"Configuration file not found: {config_path}")
             print("Creating default configuration...")

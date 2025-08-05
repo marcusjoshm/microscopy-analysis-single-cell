@@ -22,7 +22,9 @@ microscopy-analysis-single-cell/
 │           └── stage_classes.py     # Stage implementations
 ├── scripts/                         # Original analysis scripts
 ├── macros/                          # ImageJ macros
-└── config.json                      # Configuration file
+└── config/                          # Configuration directory
+    ├── config.json                  # Main configuration file
+    └── config.template.json         # Configuration template
 ```
 
 ## Key Features
@@ -90,7 +92,7 @@ python main.py --input /path/to/data --output /path/to/output --complete --verbo
 
 ## Configuration
 
-The pipeline uses a JSON configuration file (`config.json`) for settings:
+The pipeline uses a JSON configuration file (`config/config.json`) for settings:
 
 ```json
 {
@@ -142,7 +144,7 @@ The refactored pipeline maintains compatibility with the original workflow while
 
 ### Original Command
 ```bash
-python single_cell_workflow.py --config config.json --input /path/to/data --output /path/to/output
+python single_cell_workflow.py --config config/config.json --input /path/to/data --output /path/to/output
 ```
 
 ### New Command

@@ -258,7 +258,7 @@ If you prefer the original command-line approach:
 1. Copy and paste the following into Terminal:
 
 ```bash
-python single_cell_workflow.py --config config.json
+python single_cell_workflow.py --config config/config.json
 ```
 
 2. After pasting the above, press Space and type `--input` followed by another Space.
@@ -273,7 +273,7 @@ python single_cell_workflow.py --config config.json
 
 Your final command should look something like this:
 ```bash
-python single_cell_workflow.py --config config.json --input /Volumes/LEELAB/JL_Data/2025-05-08_export_max --output /Volumes/LEELAB/JL_Data/2025-05-08_analysis_Dish_1_Control_40minWash
+python single_cell_workflow.py --config config/config.json --input /Volumes/LEELAB/JL_Data/2025-05-08_export_max --output /Volumes/LEELAB/JL_Data/2025-05-08_analysis_Dish_1_Control_40minWash
 ```
 
 7. Press `Enter` to start the analysis.

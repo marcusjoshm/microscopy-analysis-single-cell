@@ -88,7 +88,7 @@ python setup_workflow.py --create-config --force
 
 This will:
 - Automatically detect ImageJ/Fiji and Cellpose installations
-- Create a `config.json` file with the correct paths
+- Create a `config/config.json` file with the correct paths
 - Set up the workflow configuration for your system
 
 ### Manual Installation
@@ -159,7 +159,7 @@ python setup_workflow.py --create-config
 This will:
 - Detect ImageJ/Fiji installation paths
 - Configure Cellpose environment paths
-- Create a `config.json` file with proper settings
+- Create a `config/config.json` file with proper settings
 - Validate all software paths
 
 ## Usage
@@ -169,7 +169,7 @@ This will:
 The complete workflow can be run with:
 
 ```bash
-python single_cell_workflow.py --config config.json --input /path/to/input --output /path/to/output
+python single_cell_workflow.py --config config/config.json --input /path/to/input --output /path/to/output
 ```
 
 ### Optional Arguments
@@ -189,7 +189,7 @@ python single_cell_workflow.py --config config.json --input /path/to/input --out
 ```bash
 # Example: Analyze specific conditions and regions for channel 1
 python single_cell_workflow.py \
-    --config config.json \
+    --config config/config.json \
     --input /path/to/input \
     --output /path/to/output \
     --conditions "Dish_1_Control" "Dish_2_Treatment" \
@@ -216,7 +216,7 @@ This workflow combines ImageJ automation for several steps and Cellpose for cell
 
 2. **Cellpose Steps**: Cell segmentation is performed using Cellpose, which requires its own environment.
 
-3. **Workflow Configuration**: The `config.json` file orchestrates these tools by specifying paths and parameters.
+3. **Workflow Configuration**: The `config/config.json` file orchestrates these tools by specifying paths and parameters.
 
 ## Directory Structure
 
@@ -239,9 +239,10 @@ The workflow generates the following structure in the specified output directory
 ## Key Components
 
 1. **`single_cell_workflow.py`**: Main workflow orchestrator
-2. **`config.json`**: Defines the sequence of steps, their types, paths, and arguments
+2. **`config/config.json`**: Defines the sequence of steps, their types, paths, and arguments
 3. **`scripts/`**: Contains individual Python and shell scripts executed by the workflow
 4. **`macros/`**: Directory containing ImageJ macros used by the workflow
+5. **`config/`**: Directory containing configuration files
 
 ## Recent Updates
 

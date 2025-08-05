@@ -49,4 +49,4 @@ log/
 # results/
 
 # Config files
-config.json
+config/config.json
