@@ -85,6 +85,16 @@ def run_complete_workflow(config: Config, logger: PipelineLogger, args: argparse
     print(f"\n" + "="*60)
     print("🎉 Complete Workflow finished successfully!")
     print("="*60)
+    
+    # Automatically save the most recently used directories as defaults
+    try:
+        from src.python.modules.directory_setup import save_recent_directories_automatically, load_config
+        config_path = "config/config.json"
+        config = load_config(config_path)
+        save_recent_directories_automatically(config, args.input, args.output, config_path)
+    except Exception as e:
+        print(f"Note: Could not save directory defaults: {e}")
+    
     return True
 
 
@@ -156,6 +166,15 @@ def main():
                     print("\n" + "="*60)
                     print("Pipeline completed successfully!")
                     print("="*60)
+                    
+                    # Automatically save the most recently used directories as defaults
+                    try:
+                        from src.python.modules.directory_setup import save_recent_directories_automatically, load_config
+                        config_path = "config/config.json"
+                        config = load_config(config_path)
+                        save_recent_directories_automatically(config, args.input, args.output, config_path)
+                    except Exception as e:
+                        print(f"Note: Could not save directory defaults: {e}")
                 else:
                     print("\n" + "="*60)
                     print("Pipeline completed with errors. Check logs for details.")

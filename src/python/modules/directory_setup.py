@@ -251,3 +251,37 @@ def load_config(config_path: str) -> Dict:
     except Exception as e:
         print(f"Warning: Could not load config from {config_path}: {e}")
         return {} 
+
+
+def save_recent_directories_automatically(config: Dict, input_path: str, output_path: str, config_path: str) -> None:
+    """
+    Automatically save the most recently used directories as defaults.
+    
+    Args:
+        config (Dict): Configuration dictionary
+        input_path (str): Input directory path
+        output_path (str): Output directory path
+        config_path (str): Path to config file
+    """
+    try:
+        # Ensure directories section exists
+        if 'directories' not in config:
+            config['directories'] = {}
+        
+        # Update default directories
+        config['directories']['input'] = input_path
+        config['directories']['output'] = output_path
+        
+        # Add to recent directories
+        add_recent_directory(config, 'input', input_path)
+        add_recent_directory(config, 'output', output_path)
+        
+        # Save config
+        save_config(config, config_path)
+        
+        print(f"✅ Automatically saved directories as defaults:")
+        print(f"  Input: {input_path}")
+        print(f"  Output: {output_path}")
+        
+    except Exception as e:
+        print(f"Warning: Could not save directory defaults: {e}") 

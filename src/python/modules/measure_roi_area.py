@@ -259,10 +259,26 @@ def find_roi_image_pairs(input_dir, output_dir):
                     matching_images = list(input_path.glob(pattern))
                     
                     for potential_image in matching_images:
-                        # Create output CSV file path based on ROI file structure
-                        roi_relative = roi_file.relative_to(output_path)
-                        csv_relative_path = roi_relative.with_suffix('.csv')
-                        csv_file = output_path / "analysis" / "cell_area" / csv_relative_path
+                        # Create output CSV file path with condition and "cell_area" in the filename
+                        # Extract condition from ROI file path, same as analyze_cell_masks.py
+                        # ROI path structure: output_dir/ROIs/condition/ROI_file.zip
+                        roi_path = Path(roi_file)
+                        condition_name = roi_path.parent.name  # Get the condition directory name (parent of ROI file)
+                        
+                        # Extract the ROI directory name from the ROI filename (like mask directory name)
+                        roi_name = roi_file.stem  # Get filename without extension
+                        # Remove "ROIs_" prefix and "_rois" suffix to get the directory name
+                        if roi_name.startswith("ROIs_"):
+                            roi_dir_name = roi_name[5:]  # Remove "ROIs_" prefix
+                        else:
+                            roi_dir_name = roi_name
+                        
+                        if roi_dir_name.endswith("_rois"):
+                            roi_dir_name = roi_dir_name[:-5]  # Remove "_rois" suffix
+                        
+                        # Create filename with condition and ROI directory name
+                        csv_filename = f"{condition_name}_{roi_dir_name}_cell_area.csv"
+                        csv_file = output_path / "analysis" / csv_filename
                         csv_file.parent.mkdir(parents=True, exist_ok=True)
                         
                         pairs.append((str(roi_file), str(potential_image), str(csv_file)))

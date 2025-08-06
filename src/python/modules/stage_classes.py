@@ -1114,12 +1114,10 @@ class MeasureROIAreaStage(StageBase):
             
             # Create analysis/cell_area directory
             cell_area_dir = Path(output_dir) / "analysis" / "cell_area"
-            cell_area_dir.mkdir(parents=True, exist_ok=True)
             
             self.logger.info(f"Measuring ROI areas using ImageJ: {imagej_path}")
             self.logger.info(f"Input directory: {input_dir}")
             self.logger.info(f"Output directory: {output_dir}")
-            self.logger.info(f"Cell area results will be saved to: {cell_area_dir}")
             
             # Run ROI area measurement
             success = measure_roi_areas(
@@ -1132,12 +1130,13 @@ class MeasureROIAreaStage(StageBase):
             if success:
                 self.logger.info("ROI area measurement completed successfully")
                 
-                # Check if any CSV files were created
-                csv_files = list(cell_area_dir.glob("**/*.csv"))
+                # Check if any CSV files were created in the analysis directory
+                analysis_dir = Path(output_dir) / "analysis"
+                csv_files = list(analysis_dir.glob("*cell_area*.csv"))
                 if csv_files:
                     self.logger.info(f"Created {len(csv_files)} ROI area measurement files")
                     for csv_file in csv_files[:5]:  # Show first 5 files
-                        self.logger.info(f"  - {csv_file.relative_to(cell_area_dir)}")
+                        self.logger.info(f"  - {csv_file.name}")
                     if len(csv_files) > 5:
                         self.logger.info(f"  ... and {len(csv_files) - 5} more files")
                 else:
@@ -1280,7 +1279,7 @@ class AnalysisStage(StageBase):
             metadata_args = [
                 "--grouped-cells-dir", f"{output_dir}/grouped_cells",
                 "--analysis-dir", f"{output_dir}/analysis",
-                "--output-dir", output_dir,
+                "--output-dir", f"{output_dir}/analysis",
                 "--overwrite",
                 "--replace",
                 "--verbose",

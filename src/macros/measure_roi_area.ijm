@@ -56,7 +56,7 @@ if (num_rois == 0) {
     // Clear any existing measurements
     run("Clear Results");
     
-    // Set measurements to include area
+    // Set measurements to include area (similar to particle analysis)
     run("Set Measurements...", "area display redirect=None decimal=3");
     
     // Measure all ROIs
@@ -86,7 +86,6 @@ if (num_rois == 0) {
         print("ROI " + (i+1) + ": " + roi_name + " -> " + cell_number);
         
         setResult("Cell_ID", i, cell_number);
-        setResult("ROI_Name", i, roi_name);
     }
     updateResults();
     

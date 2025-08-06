@@ -366,23 +366,15 @@ def generate_csv_filename(directory_path, output_dir):
     Returns:
         str: Path to the CSV file
     """
-    # Extract meaningful parts from the directory path
-    dir_parts = directory_path.split(os.sep)
+    # Extract condition name from directory path, same as measure_roi_area.py
+    dir_path = Path(directory_path)
+    condition_name = dir_path.parent.name  # Get the condition directory name (parent of mask directory)
     
-    # Find condition and region information (usually in the last 1-3 directory levels)
-    meaningful_parts = []
-    for part in reversed(dir_parts[-3:]):  # Look at the last 3 directory levels
-        if part:
-            meaningful_parts.append(part)
+    # Get the mask directory name for additional identification
+    mask_dir_name = dir_path.name
     
-    # Create a filename from the meaningful parts
-    if meaningful_parts:
-        csv_name = "_".join(reversed(meaningful_parts)) + "_summary.csv"
-    else:
-        # Fallback to a simple hash of the directory path
-        import hashlib
-        hash_obj = hashlib.md5(directory_path.encode())
-        csv_name = f"dir_{hash_obj.hexdigest()[:8]}_summary.csv"
+    # Create filename with condition prefix, similar to cell area files
+    csv_name = f"{condition_name}_{mask_dir_name}_particle_analysis.csv"
     
     return os.path.join(output_dir, csv_name)
 

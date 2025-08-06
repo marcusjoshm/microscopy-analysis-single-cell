@@ -48,14 +48,6 @@ if [[ ! "$PYTHON_PATH" == *"cellpose_venv"* ]]; then
     handle_error "Not using Python from Cellpose virtual environment. Current Python: $PYTHON_PATH"
 fi
 
-# Enhanced debugging for Cellpose environment
-DEBUG_LOG="${PREPROCESSED_DIR}/cellpose_debug.log"
-echo "===================== CELLPOSE DEBUG INFO =====================" > "$DEBUG_LOG"
-echo "Date: $(date)" >> "$DEBUG_LOG"
-echo "Working directory: $(pwd)" >> "$DEBUG_LOG"
-echo "Python executable: $PYTHON_PATH" >> "$DEBUG_LOG"
-echo "Python version: $(python --version 2>&1)" >> "$DEBUG_LOG"
-
 # Check if numpy is installed
 if ! python -c "import numpy" 2>/dev/null; then
     echo "Installing numpy..."
@@ -68,24 +60,9 @@ if ! python -c "import cellpose" 2>/dev/null; then
     pip install cellpose
 fi
 
-echo "Numpy version: $(python -c 'import numpy; print(numpy.__version__)')" >> "$DEBUG_LOG"
-echo "Cellpose version: $(python -c 'import cellpose; print(cellpose.__version__)')" >> "$DEBUG_LOG"
-echo "Cellpose installation: $(python -c 'import cellpose; print(cellpose.__file__)')" >> "$DEBUG_LOG"
-
-# Log environment variables that might affect image processing
-echo "\nRelevant environment variables:" >> "$DEBUG_LOG"
-env | grep -E 'PYTHONPATH|DISPLAY|QT|OPENCV|CUDA|TORCH|TF|CELL|PATH' >> "$DEBUG_LOG"
-
-# Log the preprocessed directory content
-echo "\nPreprocessed directory content:" >> "$DEBUG_LOG"
-find "$PREPROCESSED_DIR" -type f -name "*.tif" | head -n 20 >> "$DEBUG_LOG"
-
-echo "\n==================== END DEBUG INFO ====================" >> "$DEBUG_LOG"
-echo "Debug info saved to $DEBUG_LOG"
-
-# Start Cellpose GUI in the background with debug logging
+# Start Cellpose GUI in the background
 echo "Starting Cellpose GUI..."
-python -m cellpose 2>&1 | tee "${PREPROCESSED_DIR}/cellpose_output.log" &
+python -m cellpose &
 CELLPOSE_PID=$!
 
 # Check if Cellpose started successfully

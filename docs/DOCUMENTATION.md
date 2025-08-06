@@ -233,6 +233,7 @@ The workflow generates the following structure in the specified output directory
 ├── combined_masks/       # Combined masks from different groups
 ├── masks/                # Individual cell masks
 ├── analysis/             # Analysis results and measurements
+├── logs/                 # Pipeline log files
 ├── .workflow_state.json  # Record of workflow progress and selections
 ```
 
@@ -241,7 +242,7 @@ The workflow generates the following structure in the specified output directory
 1. **`single_cell_workflow.py`**: Main workflow orchestrator
 2. **`config/config.json`**: Defines the sequence of steps, their types, paths, and arguments
 3. **`scripts/`**: Contains individual Python and shell scripts executed by the workflow
-4. **`macros/`**: Directory containing ImageJ macros used by the workflow
+4. **`src/macros/`**: Directory containing ImageJ macros used by the workflow
 5. **`config/`**: Directory containing configuration files
 
 ## Recent Updates

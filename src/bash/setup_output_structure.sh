@@ -41,7 +41,7 @@ echo -e "${GREEN}Setting up output directory structure: $OUTPUT_DIR${NC}"
 
 # Create the main output directories
 echo -e "${BLUE}Creating main output directories...${NC}"
-mkdir -p "$OUTPUT_DIR"/{analysis,cells,combined_masks,grouped_cells,grouped_masks,masks,raw_data,ROIs,macros,preprocessed}
+mkdir -p "$OUTPUT_DIR"/{analysis,cells,combined_masks,grouped_cells,grouped_masks,masks,raw_data,ROIs,preprocessed}
 
 echo -e "${GREEN}Base directory structure created${NC}"
 

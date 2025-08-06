@@ -58,10 +58,7 @@ class Pipeline:
 
         # Determine which directories are needed based on selected stages
         needed_dirs = {
-            'output': Path(self.args.output) / 'output',
             'preprocessed': Path(self.args.output) / 'preprocessed',
-            'segmented': Path(self.args.output) / 'segmented',
-            'analyzed': Path(self.args.output) / 'analyzed',
             'logs': logs_dir
         }
         
