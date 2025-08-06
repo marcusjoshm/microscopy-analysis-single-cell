@@ -104,18 +104,27 @@ class WorkflowSetup:
         logger.info("Installing main workflow requirements...")
         
         try:
-            # Install main requirements
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
-                check=True
-            )
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
-                check=True
-            )
+            # Check if we're in a virtual environment
+            in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
             
-            logger.info("Main requirements installation complete")
-            return True
+            if in_venv:
+                logger.info("Running in virtual environment - installing requirements...")
+                # Install main requirements
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+                    check=True
+                )
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+                    check=True
+                )
+                
+                logger.info("Main requirements installation complete")
+                return True
+            else:
+                logger.warning("Not running in virtual environment - skipping main requirements installation")
+                logger.warning("Please activate a virtual environment before running setup")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to install main requirements: {e}")

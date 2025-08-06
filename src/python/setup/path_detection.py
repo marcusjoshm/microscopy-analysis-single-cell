@@ -168,28 +168,42 @@ class PathDetector:
             logger.warning("Cellpose not found in virtual environment. Attempting installation...")
             try:
                 # First upgrade pip
-                subprocess.run(
+                logger.info("Upgrading pip...")
+                pip_result = subprocess.run(
                     [workspace_cellpose_venv, "-m", "pip", "install", "--upgrade", "pip"],
-                    check=True,
                     capture_output=True,
+                    text=True,
                     timeout=30
                 )
+                if pip_result.returncode != 0:
+                    logger.warning(f"Pip upgrade failed: {pip_result.stderr}")
+                
                 # Then install cellpose
-                subprocess.run(
+                logger.info("Installing Cellpose dependencies...")
+                install_result = subprocess.run(
                     [workspace_cellpose_venv, "-m", "pip", "install", "-r", "requirements_cellpose.txt"],
-                    check=True,
                     capture_output=True,
+                    text=True,
                     timeout=300  # 5 minute timeout for cellpose installation
                 )
-                if self._validate_cellpose_in_env(workspace_cellpose_venv):
-                    logger.info(f"Successfully installed and validated Cellpose in virtual environment: {workspace_cellpose_venv}")
-                    return workspace_cellpose_venv
+                
+                if install_result.returncode == 0:
+                    logger.info("Cellpose installation completed successfully")
+                    if self._validate_cellpose_in_env(workspace_cellpose_venv):
+                        logger.info(f"Successfully installed and validated Cellpose in virtual environment: {workspace_cellpose_venv}")
+                        return workspace_cellpose_venv
+                    else:
+                        logger.error("Cellpose installation completed but validation failed")
+                        logger.debug(f"Installation output: {install_result.stdout}")
+                        logger.debug(f"Installation errors: {install_result.stderr}")
                 else:
-                    logger.error("Cellpose installation completed but validation failed")
+                    logger.error(f"Cellpose installation failed: {install_result.stderr}")
+                    logger.debug(f"Installation output: {install_result.stdout}")
+                    
             except subprocess.TimeoutExpired:
                 logger.error("Cellpose installation timed out")
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Failed to install Cellpose: {e.stderr.decode() if e.stderr else str(e)}")
+            except subprocess.SubprocessError as e:
+                logger.error(f"Failed to install Cellpose: {str(e)}")
         
         # Strategy 1: Check if cellpose is available in current Python environment
         # Use subprocess to avoid NumPy compatibility issues in the main process
@@ -340,9 +354,9 @@ class PathDetector:
                 logger.debug(f"Python validation failed: {result.stderr}")
                 return False
                 
-            # Try to run cellpose command
+            # Try to import cellpose in a subprocess
             result = subprocess.run(
-                [python_path, "-m", "cellpose", "--version"],
+                [python_path, "-c", "import cellpose; print('Cellpose available')"],
                 capture_output=True,
                 text=True,
                 timeout=10
@@ -361,7 +375,7 @@ class PathDetector:
                     return True
                 else:
                     logger.debug(f"Cellpose validation failed: {result.stderr}")
-                    # Try to get more information about the environment
+                    # Try alternative validation - check if cellpose is in pip list
                     try:
                         pip_list = subprocess.run(
                             [python_path, "-m", "pip", "list"],
@@ -370,7 +384,11 @@ class PathDetector:
                             timeout=5
                         )
                         if pip_list.returncode == 0:
-                            logger.debug(f"Installed packages in {python_path}:\n{pip_list.stdout}")
+                            if "cellpose" in pip_list.stdout.lower():
+                                logger.info(f"Found Cellpose in pip list for {python_path}")
+                                return True
+                            else:
+                                logger.debug(f"Installed packages in {python_path}:\n{pip_list.stdout}")
                     except subprocess.SubprocessError:
                         pass
         except subprocess.TimeoutExpired:
