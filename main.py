@@ -139,7 +139,11 @@ def main():
                 except CLIError as e:
                     print(f"CLI Error: {e}")
                     print("Press Enter to return to main menu...")
-                    input()
+                    try:
+                        input()
+                    except EOFError:
+                        print("\nEOF detected. Exiting gracefully.")
+                        return 1
                     continue  # Return to menu
                 
                 # Check if any stages are selected
@@ -211,7 +215,11 @@ def main():
                 import traceback
                 traceback.print_exc()
                 print("\nPress Enter to return to main menu...")
-                input()
+                try:
+                    input()
+                except EOFError:
+                    print("\nEOF detected. Exiting gracefully.")
+                    return 1
                 continue  # Return to menu
             
     except KeyboardInterrupt:

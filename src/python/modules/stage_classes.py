@@ -1177,6 +1177,7 @@ class AnalysisStage(StageBase):
         
         # Check if data selection has been completed
         data_selection = self.config.get('data_selection')
+        self.logger.debug(f"Data selection from config: {data_selection}")
         if not data_selection:
             self.logger.error("Data selection has not been completed. Please run data selection first.")
             return False

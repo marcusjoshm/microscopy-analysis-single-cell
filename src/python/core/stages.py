@@ -330,6 +330,13 @@ class StageExecutor:
             self.logger.error(f"Stage not found: {stage_name}")
             return False
         
+        # Reload config to ensure we have the latest data
+        try:
+            self.config.load()
+            self.logger.debug(f"Config reloaded successfully. Data selection: {self.config.get('data_selection')}")
+        except Exception as e:
+            self.logger.warning(f"Could not reload config: {e}")
+        
         stage = stage_class(self.config, self.logger, stage_name)
         success = stage.execute(**kwargs)
         

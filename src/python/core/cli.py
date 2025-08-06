@@ -317,7 +317,11 @@ Examples:
         print(colorize("9. Exit", Colors.red))
         
         # Get user choice
-        choice = input("Select an option (1-9): ").strip().lower()
+        try:
+            choice = input("Select an option (1-9): ").strip().lower()
+        except EOFError:
+            print("\nEOF detected. Exiting gracefully.")
+            return None
         
         # Update args based on choice
         if choice == "1":
@@ -402,10 +406,14 @@ Examples:
             Directory path
         """
         while True:
-            directory = input(prompt).strip()
-            if directory:
-                return directory
-            print("Please enter a valid directory path.")
+            try:
+                directory = input(prompt).strip()
+                if directory:
+                    return directory
+                print("Please enter a valid directory path.")
+            except EOFError:
+                print("\nEOF detected. Exiting gracefully.")
+                raise
     
     def _setup_output_structure(self, input_dir: str, output_dir: str) -> bool:
         """
