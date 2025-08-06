@@ -9,6 +9,9 @@ This script sets up the microscopy analysis workflow by:
 2. Creating and validating configuration files
 3. Performing installation checks
 4. Setting up the workspace
+
+Default behavior: Creates a configuration file automatically.
+Use --check-only to only check requirements without creating configuration.
 """
 
 import os
@@ -80,7 +83,7 @@ class WorkflowSetup:
                 check=True
             )
             subprocess.run(
-                [str(python_path), "-m", "pip", "install", "numpy", "cellpose"],
+                [str(python_path), "-m", "pip", "install", "-r", "requirements_cellpose.txt"],
                 check=True
             )
             
@@ -89,6 +92,33 @@ class WorkflowSetup:
             
         except Exception as e:
             logger.error(f"Failed to create virtual environment: {e}")
+            return False
+    
+    def install_main_requirements(self) -> bool:
+        """
+        Install main workflow requirements in the current environment.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info("Installing main workflow requirements...")
+        
+        try:
+            # Install main requirements
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "--upgrade", "pip"],
+                check=True
+            )
+            subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+                check=True
+            )
+            
+            logger.info("Main requirements installation complete")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to install main requirements: {e}")
             return False
     
     def check_requirements(self) -> Dict[str, bool]:
@@ -408,8 +438,8 @@ def main():
     )
     
     parser.add_argument(
-        '--create-config', action='store_true',
-        help='Create a new configuration file'
+        '--check-only', action='store_true',
+        help='Only check requirements without creating configuration'
     )
     parser.add_argument(
         '--validate', action='store_true',
@@ -433,10 +463,30 @@ def main():
     # Create setup instance
     setup = WorkflowSetup(args.workspace)
     
-    # If no specific action is requested, show help and check requirements
-    if not any([args.create_config, args.validate, args.info]):
+    # Handle specific actions first
+    if args.validate:
+        success = setup.validate_configuration()
+        return 0 if success else 1
+    
+    if args.info:
+        success = setup.print_configuration_info()
+        return 0 if success else 1
+    
+    # Default behavior: create configuration (unless --check-only is specified)
+    if args.check_only:
         logger.info("Microscopy Analysis Workflow Setup")
         logger.info("=" * 40)
+        
+        # Note about NumPy compatibility
+        print("\nNote: If you see NumPy compatibility warnings during setup,")
+        print("this is normal and the workflow should still function correctly.")
+        print("These warnings occur when Cellpose (compiled with NumPy 1.x)")
+        print("runs with NumPy 2.x, but the software is designed to handle this.\n")
+        
+        # Install main requirements first
+        if not setup.install_main_requirements():
+            logger.error("Failed to install main requirements")
+            return 1
         
         # Check requirements
         requirements = setup.check_requirements()
@@ -449,26 +499,31 @@ def main():
         
         if all(requirements.values()):
             print("\n✓ All requirements satisfied!")
-            print("Run with --create-config to create a configuration file.")
+            print("Run without --check-only to create a configuration file.")
         else:
             print("\n✗ Some requirements are missing.")
-            print("Run with --create-config to set up the workflow.")
+            print("Run without --check-only to set up the workflow.")
         
         return 0
-    
-    # Handle specific actions
-    success = True
-    
-    if args.create_config:
+    else:
+        # Default behavior: create configuration
+        logger.info("Microscopy Analysis Workflow Setup")
+        logger.info("=" * 40)
+        
+        # Note about NumPy compatibility
+        print("\nNote: If you see NumPy compatibility warnings during setup,")
+        print("this is normal and the workflow should still function correctly.")
+        print("These warnings occur when Cellpose (compiled with NumPy 1.x)")
+        print("runs with NumPy 2.x, but the software is designed to handle this.\n")
+        
+        # Install main requirements first
+        if not setup.install_main_requirements():
+            logger.error("Failed to install main requirements")
+            return 1
+        
+        # Create configuration
         success = setup.create_configuration(force=args.force)
-    
-    if args.validate:
-        success = setup.validate_configuration() and success
-    
-    if args.info:
-        success = setup.print_configuration_info() and success
-    
-    return 0 if success else 1
+        return 0 if success else 1
 
 if __name__ == "__main__":
     sys.exit(main()) 

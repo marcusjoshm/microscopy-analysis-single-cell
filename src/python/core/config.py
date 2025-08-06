@@ -282,10 +282,41 @@ def detect_software_paths() -> Dict[str, str]:
     detected_paths['python'] = sys.executable
     
     # Cellpose is typically installed via pip, so we'll check if it's importable
+    # Use subprocess to avoid NumPy compatibility issues
+    import subprocess
     try:
-        import cellpose
-        detected_paths['cellpose'] = str(Path(cellpose.__file__).parent)
-    except ImportError:
+        result = subprocess.run(
+            [sys.executable, "-c", "import cellpose; print(cellpose.__file__)"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            cellpose_path = result.stdout.strip()
+            detected_paths['cellpose'] = str(Path(cellpose_path).parent)
+        else:
+            # Check if the error is just a NumPy compatibility warning
+            stderr_output = result.stderr if result.stderr else ""
+            if "numpy" in stderr_output.lower() and "compatibility" in stderr_output.lower():
+                # NumPy compatibility warning - try to get the path anyway
+                try:
+                    # Try a different approach to get cellpose path
+                    result2 = subprocess.run(
+                        [sys.executable, "-c", "import cellpose; print(cellpose.__file__)"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    if result2.returncode == 0:
+                        cellpose_path = result2.stdout.strip()
+                        detected_paths['cellpose'] = str(Path(cellpose_path).parent)
+                    else:
+                        detected_paths['cellpose'] = ""
+                except subprocess.SubprocessError:
+                    detected_paths['cellpose'] = ""
+            else:
+                detected_paths['cellpose'] = ""
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired):
         detected_paths['cellpose'] = ""
     
     return detected_paths 

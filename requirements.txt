@@ -20,7 +20,4 @@ colorama>=0.4.4  # For colored terminal output
 
 # Optional: GUI dependencies
 PyQt6>=6.4.0  # For any GUI components
-pyqtgraph>=0.12.4  # For plotting
-
-# Cellpose with GUI support
-cellpose[gui]>=4.0.0 
+pyqtgraph>=0.12.4  # For plotting 

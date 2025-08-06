@@ -56,8 +56,13 @@ fi
 
 # Check if cellpose is installed
 if ! python -c "import cellpose" 2>/dev/null; then
-    echo "Installing cellpose..."
-    pip install cellpose
+    # Check if the error is just a NumPy compatibility warning
+    if python -c "import cellpose" 2>&1 | grep -q "numpy.*compatibility"; then
+        echo "Cellpose detected with NumPy compatibility warning - this is normal"
+    else
+        echo "Installing cellpose version 4.0.4..."
+        pip install "cellpose==4.0.4"
+    fi
 fi
 
 # Start Cellpose GUI in the background

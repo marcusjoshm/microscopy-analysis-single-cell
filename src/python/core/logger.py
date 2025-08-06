@@ -142,7 +142,7 @@ class PipelineLogger:
         """Save execution summary to JSON file."""
         self.execution_stats['end_time'] = datetime.now().isoformat()
         
-        summary_file = self.logs_dir / "execution_summary.json"
+        summary_file = self.logs_dir / f"execution_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         with open(summary_file, 'w') as f:
             json.dump(self.execution_stats, f, indent=2)
         
